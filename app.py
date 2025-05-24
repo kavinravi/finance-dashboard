@@ -14,9 +14,10 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
 # Set page config
 st.set_page_config(
@@ -161,18 +162,37 @@ def prepare_lstm_data(df, sequence_length=10):
     
     return X, y, scaler
 
+class LSTMModel(nn.Module):
+    """PyTorch LSTM model"""
+    def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1):
+        super(LSTMModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.2)
+        self.dropout = nn.Dropout(0.2)
+        self.fc1 = nn.Linear(hidden_size, 25)
+        self.fc2 = nn.Linear(25, output_size)
+        
+    def forward(self, x):
+        # Initialize hidden state
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+        
+        # Forward propagate LSTM
+        out, _ = self.lstm(x, (h0, c0))
+        
+        # Take the last output
+        out = out[:, -1, :]
+        out = self.dropout(out)
+        out = torch.relu(self.fc1(out))
+        out = self.fc2(out)
+        
+        return out
+
 def create_lstm_model(sequence_length):
-    """Create LSTM model"""
-    model = Sequential([
-        LSTM(50, return_sequences=True, input_shape=(sequence_length, 1)),
-        Dropout(0.2),
-        LSTM(50, return_sequences=False),
-        Dropout(0.2),
-        Dense(25),
-        Dense(1)
-    ])
-    
-    model.compile(optimizer='adam', loss='mean_squared_error')
+    """Create PyTorch LSTM model"""
+    model = LSTMModel(input_size=1, hidden_size=50, num_layers=2, output_size=1)
     return model
 
 def main():
@@ -309,13 +329,35 @@ def main():
                     X_train, X_test = X[:train_size], X[train_size:]
                     y_train, y_test = y[:train_size], y[train_size:]
                     
-                    # Create and train model
+                    # Convert to PyTorch tensors
+                    X_train_tensor = torch.FloatTensor(X_train)
+                    y_train_tensor = torch.FloatTensor(y_train.reshape(-1, 1))
+                    X_test_tensor = torch.FloatTensor(X_test)
+                    y_test_tensor = torch.FloatTensor(y_test.reshape(-1, 1))
+                    
+                    # Create model
                     model = create_lstm_model(sequence_length)
-                    history = model.fit(X_train, y_train, epochs=50, batch_size=1, verbose=0)
+                    criterion = nn.MSELoss()
+                    optimizer = optim.Adam(model.parameters(), lr=0.001)
+                    
+                    # Training
+                    model.train()
+                    losses = []
+                    epochs = 50
+                    
+                    for epoch in range(epochs):
+                        optimizer.zero_grad()
+                        outputs = model(X_train_tensor)
+                        loss = criterion(outputs, y_train_tensor)
+                        loss.backward()
+                        optimizer.step()
+                        losses.append(loss.item())
                     
                     # Make predictions
-                    train_predictions = model.predict(X_train)
-                    test_predictions = model.predict(X_test)
+                    model.eval()
+                    with torch.no_grad():
+                        train_predictions = model(X_train_tensor).numpy()
+                        test_predictions = model(X_test_tensor).numpy()
                     
                     # Inverse transform
                     train_predictions = scaler.inverse_transform(train_predictions)
@@ -338,7 +380,7 @@ def main():
                     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
                     
                     # Training loss
-                    ax1.plot(history.history['loss'])
+                    ax1.plot(losses)
                     ax1.set_title('Model Training Loss')
                     ax1.set_xlabel('Epoch')
                     ax1.set_ylabel('Loss')
@@ -361,8 +403,10 @@ def main():
                     
                     # Future prediction
                     st.subheader("Next Day Prediction")
-                    last_sequence = X[-1].reshape(1, sequence_length, 1)
-                    next_prediction = model.predict(last_sequence)
+                    last_sequence = torch.FloatTensor(X[-1].reshape(1, sequence_length, 1))
+                    model.eval()
+                    with torch.no_grad():
+                        next_prediction = model(last_sequence).numpy()
                     next_price = scaler.inverse_transform(next_prediction)[0][0]
                     
                     st.success(f"Predicted next day closing price: ${next_price:.2f}")
