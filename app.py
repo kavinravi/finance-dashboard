@@ -417,20 +417,6 @@ def main():
     
     st.sidebar.caption("💡 **Tips:** Keep CSV files under 10MB. Most daily stock data should be much smaller than this.")
     
-    st.sidebar.markdown("---")
-    
-    # Tab selection in sidebar to prevent jumping around
-    st.sidebar.subheader("📄 Dashboard Sections")
-    selected_tab = st.sidebar.radio(
-        "Choose section:",
-        ["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"],
-        index=["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"].index(st.session_state.active_tab) if st.session_state.active_tab in ["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"] else 0,
-        key="tab_selection"
-    )
-    
-    # Update session state when tab changes
-    st.session_state.active_tab = selected_tab
-    
     # Process uploaded file
     use_uploaded_data = False
     if uploaded_file is not None:
@@ -486,8 +472,10 @@ def main():
         st.error("Failed to load data. Please check the data file and try again.")
         return
     
-    # Render content based on selected tab (no jumping around!)
-    if selected_tab == "📊 Data Overview":
+    # Main content tabs (clean interface with fixed widget keys to prevent jumping)
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"])
+    
+    with tab1:
         st.header("Data Overview")
         
         # Key metrics
@@ -514,7 +502,7 @@ def main():
         st.subheader("Statistical Summary")
         st.dataframe(df.describe(), use_container_width=True)
     
-    elif selected_tab == "📈 Visualizations":
+    with tab2:
         st.header("Stock Visualizations")
         
         # Candlestick chart
@@ -537,7 +525,8 @@ def main():
         pair_fig = create_pairplot(df, st.session_state.current_ticker)
         st.pyplot(pair_fig)
     
-    elif selected_tab == "🔮 ARIMA Analysis":
+    
+    with tab3:
         st.header("ARIMA Time Series Analysis")
         
         st.info("💡 **Recommended starting point**: p=1, d=1, q=1 (selected by default) works well for most stocks including SPY.")
@@ -651,7 +640,8 @@ def main():
                     with st.expander("❓ How to Interpret These Results"):
                         st.markdown(explain_arima_results())
     
-    elif selected_tab == "🧠 LSTM Analysis":
+    
+    with tab4:
         st.header("LSTM Deep Learning Analysis")
         
         st.info("💡 **Recommended starting point**: Sequence Length = 10 days (selected by default) works well for most stocks.")
