@@ -45,11 +45,109 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def validate_ticker_format(ticker):
+    """Validate ticker symbol format"""
+    if not ticker:
+        return False, "❌ **Ticker required**: Please enter a ticker symbol."
+    
+    if len(ticker) < 1 or len(ticker) > 5:
+        return False, "❌ **Ticker length**: Ticker must be 1-5 characters (e.g., AAPL, GOOGL)."
+    
+    if not ticker.isalpha():
+        return False, "❌ **Ticker format**: Ticker must contain only letters (A-Z)."
+    
+    return True, ""
+
+def validate_uploaded_data(df, max_size_mb=10):
+    """Validate uploaded CSV data and return clear error messages"""
+    required_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+    errors = []
+    
+    # Check file size (approximate)
+    estimated_size_mb = len(df) * len(df.columns) * 50 / (1024 * 1024)  # Rough estimate
+    if estimated_size_mb > max_size_mb:
+        errors.append(f"❌ **File too large**: File appears to be ~{estimated_size_mb:.1f}MB. Please keep under {max_size_mb}MB.")
+        return False, errors
+    
+    # Check if required columns exist (case-insensitive)
+    df_columns_lower = [col.lower() for col in df.columns]
+    required_lower = [col.lower() for col in required_columns]
+    
+    missing_columns = []
+    for req_col in required_columns:
+        if req_col.lower() not in df_columns_lower:
+            missing_columns.append(req_col)
+    
+    if missing_columns:
+        errors.append(f"❌ **Missing required columns**: {', '.join(missing_columns)}")
+        errors.append(f"📋 **Required columns are**: {', '.join(required_columns)}")
+        return False, errors
+    
+    # Check if we have data
+    if len(df) == 0:
+        errors.append("❌ **Empty file**: The CSV file contains no data rows.")
+        return False, errors
+    
+    # Check date column format (try to parse a few rows)
+    date_col = None
+    for col in df.columns:
+        if col.lower() == 'date':
+            date_col = col
+            break
+    
+    if date_col:
+        try:
+            pd.to_datetime(df[date_col].head(3))
+        except:
+            errors.append("❌ **Date format issue**: Could not parse the Date column. Please use formats like 'MM/DD/YYYY' or 'YYYY-MM-DD'.")
+            return False, errors
+    
+    # Check if numeric columns contain valid data
+    numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+    for col in numeric_cols:
+        actual_col = None
+        for df_col in df.columns:
+            if df_col.lower() == col.lower():
+                actual_col = df_col
+                break
+        
+        if actual_col:
+            # Try to convert to numeric (handle quotes, commas)
+            sample_data = df[actual_col].head(3).astype(str).str.replace('"', '').str.replace(',', '')
+            try:
+                pd.to_numeric(sample_data)
+            except:
+                errors.append(f"❌ **{col} column format issue**: Contains non-numeric data. Please ensure {col} contains only numbers.")
+                return False, errors
+    
+    return True, []
+
 @st.cache_data(ttl=300)  # Cache for 5 minutes only
-def load_data():
-    """Load and preprocess the SPY data"""
+def load_data(use_uploaded=False, uploaded_data=None):
+    """Load and preprocess stock data"""
     try:
-        df = pd.read_csv('data/SPY.csv')
+        if use_uploaded and uploaded_data is not None:
+            df = uploaded_data.copy()
+        else:
+            df = pd.read_csv('data/SPY.csv')
+        
+        # Normalize column names (handle case-insensitive)
+        column_mapping = {}
+        for col in df.columns:
+            if col.lower() == 'date':
+                column_mapping[col] = 'Date'
+            elif col.lower() == 'open':
+                column_mapping[col] = 'Open'
+            elif col.lower() == 'high':
+                column_mapping[col] = 'High'
+            elif col.lower() == 'low':
+                column_mapping[col] = 'Low'
+            elif col.lower() == 'close':
+                column_mapping[col] = 'Close'
+            elif col.lower() == 'volume':
+                column_mapping[col] = 'Volume'
+        
+        df = df.rename(columns=column_mapping)
         
         # Clean the data
         df['Date'] = pd.to_datetime(df['Date'])
@@ -81,7 +179,7 @@ def load_data():
         st.info("Please check that the SPY.csv file is properly formatted.")
         return pd.DataFrame()  # Return empty dataframe to prevent crashes
 
-def create_candlestick_chart(df):
+def create_candlestick_chart(df, ticker="SPY"):
     """Create an interactive candlestick chart"""
     fig = go.Figure(data=go.Candlestick(
         x=df['Date'],
@@ -89,12 +187,12 @@ def create_candlestick_chart(df):
         high=df['High'],
         low=df['Low'],
         close=df['Close'],
-        name="SPY"
+        name=ticker
     ))
     
     # Set the x-axis range to show full dataset by default
     fig.update_layout(
-        title="SPY Candlestick Chart",
+        title=f"{ticker} Candlestick Chart",
         xaxis_title="Date",
         yaxis_title="Price ($)",
         height=500,
@@ -111,10 +209,10 @@ def create_candlestick_chart(df):
     
     return fig
 
-def create_volume_chart(df):
+def create_volume_chart(df, ticker="SPY"):
     """Create volume chart"""
     fig = px.bar(df, x='Date', y='Volume', 
-                 title="SPY Trading Volume",
+                 title=f"{ticker} Trading Volume",
                  color='Volume',
                  color_continuous_scale='viridis')
     
@@ -127,24 +225,24 @@ def create_volume_chart(df):
     )
     return fig
 
-def create_correlation_heatmap(df):
+def create_correlation_heatmap(df, ticker="SPY"):
     """Create correlation heatmap"""
     numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume', 'Daily_Return', 'High_Low_Pct']
     corr_matrix = df[numeric_cols].corr()
     
     fig, ax = plt.subplots(figsize=(10, 8))
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, ax=ax)
-    plt.title('Correlation Matrix of SPY Features')
+    plt.title(f'Correlation Matrix of {ticker} Features')
     return fig
 
-def create_pairplot(df):
+def create_pairplot(df, ticker="SPY"):
     """Create seaborn pairplot"""
     numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
     fig = plt.figure(figsize=(12, 10))
     
     # Create pairplot
     g = sns.pairplot(df[numeric_cols], diag_kind='hist', corner=True)
-    g.fig.suptitle('SPY Stock Data Pairplot', y=1.02)
+    g.fig.suptitle(f'{ticker} Stock Data Pairplot', y=1.02)
     return g.fig
 
 def prepare_arima_data(df):
@@ -223,16 +321,14 @@ def create_lstm_model(sequence_length):
     return model
 
 def main():
-    # Header
-    st.markdown('<h1 class="main-header">📈 SPY Finance Dashboard</h1>', unsafe_allow_html=True)
+    # Initialize session state for uploaded data
+    if 'uploaded_data' not in st.session_state:
+        st.session_state.uploaded_data = None
+    if 'current_ticker' not in st.session_state:
+        st.session_state.current_ticker = "SPY"
     
-    # Load data
-    df = load_data()
-    
-    # Check if data loaded successfully
-    if df.empty:
-        st.error("Failed to load data. Please check the data file and try again.")
-        return
+    # Dynamic header with current ticker
+    st.markdown(f'<h1 class="main-header">📈 {st.session_state.current_ticker} Finance Dashboard</h1>', unsafe_allow_html=True)
     
     # Sidebar
     st.sidebar.title("Dashboard Controls")
@@ -241,6 +337,82 @@ def main():
     if st.sidebar.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
+    
+    st.sidebar.markdown("---")
+    
+    # File upload section
+    st.sidebar.subheader("📁 Upload Your Data")
+    
+    uploaded_file = st.sidebar.file_uploader(
+        "Choose a CSV file",
+        type="csv",
+        help="Upload a CSV file with stock data. Required columns: Date, Open, High, Low, Close, Volume",
+        key="csv_uploader"
+    )
+    
+    ticker_name = st.sidebar.text_input(
+        "Ticker Symbol",
+        value=st.session_state.current_ticker if st.session_state.current_ticker != "SPY" else "",
+        max_chars=5,
+        help="Enter the ticker symbol (e.g., AAPL, NVDA, GOOGL). Must be 1-5 letters only."
+    ).upper()
+    
+    st.sidebar.caption("💡 **Tips:** Keep CSV files under 10MB. Most daily stock data should be much smaller than this.")
+    
+    # Process uploaded file
+    use_uploaded_data = False
+    if uploaded_file is not None:
+        try:
+            # Read uploaded CSV
+            uploaded_df = pd.read_csv(uploaded_file)
+            
+            # Validate ticker format first
+            ticker_valid, ticker_error = validate_ticker_format(ticker_name)
+            
+            if not ticker_valid:
+                st.sidebar.error("**Upload Failed**")
+                st.sidebar.error(ticker_error)
+            else:
+                # Validate data
+                is_valid, errors = validate_uploaded_data(uploaded_df)
+                
+                if is_valid:
+                    # Store in session state
+                    st.session_state.uploaded_data = uploaded_df
+                    st.session_state.current_ticker = ticker_name
+                    use_uploaded_data = True
+                    st.sidebar.success(f"✅ {ticker_name} data loaded successfully!")
+                    st.sidebar.info(f"📊 {len(uploaded_df)} trading days loaded")
+                else:
+                    # Show validation errors
+                    st.sidebar.error("**Upload Failed**")
+                    for error in errors:
+                        st.sidebar.error(error)
+                st.sidebar.markdown("**💡 Tips:**")
+                st.sidebar.markdown("- Ensure your CSV has headers: Date, Open, High, Low, Close, Volume")
+                st.sidebar.markdown("- Date format: MM/DD/YYYY or YYYY-MM-DD")
+                st.sidebar.markdown("- Numbers can have quotes or commas (we'll clean them)")
+                
+        except Exception as e:
+            st.sidebar.error(f"❌ **Error reading file**: {str(e)}")
+            st.sidebar.markdown("Please ensure your file is a valid CSV format.")
+    
+    # Load data (either uploaded or default SPY)
+    if use_uploaded_data:
+        df = load_data(use_uploaded=True, uploaded_data=st.session_state.uploaded_data)
+    elif st.session_state.uploaded_data is not None:
+        # Use previously uploaded data
+        df = load_data(use_uploaded=True, uploaded_data=st.session_state.uploaded_data)
+        use_uploaded_data = True
+    else:
+        # Use default SPY data
+        df = load_data()
+        st.session_state.current_ticker = "SPY"
+    
+    # Check if data loaded successfully
+    if df.empty:
+        st.error("Failed to load data. Please check the data file and try again.")
+        return
     
     # Main content tabs
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"])
@@ -277,22 +449,22 @@ def main():
         
         # Candlestick chart
         st.subheader("Price Chart")
-        candlestick_fig = create_candlestick_chart(df)
+        candlestick_fig = create_candlestick_chart(df, st.session_state.current_ticker)
         st.plotly_chart(candlestick_fig, use_container_width=True)
         
         # Volume chart
         st.subheader("Volume Chart")
-        volume_fig = create_volume_chart(df)
+        volume_fig = create_volume_chart(df, st.session_state.current_ticker)
         st.plotly_chart(volume_fig, use_container_width=True)
         
         # Correlation heatmap
         st.subheader("Correlation Analysis")
-        corr_fig = create_correlation_heatmap(df)
+        corr_fig = create_correlation_heatmap(df, st.session_state.current_ticker)
         st.pyplot(corr_fig)
         
         # Pairplot
         st.subheader("Pairplot Analysis")
-        pair_fig = create_pairplot(df)
+        pair_fig = create_pairplot(df, st.session_state.current_ticker)
         st.pyplot(pair_fig)
     
     with tab3:
@@ -351,7 +523,7 @@ def main():
                                    color='red', alpha=0.3, label='Confidence Interval')
                     
                     ax.legend()
-                    ax.set_title('ARIMA Forecast')
+                    ax.set_title(f'{st.session_state.current_ticker} ARIMA Forecast')
                     ax.set_xlabel('Date')
                     ax.set_ylabel('Price ($)')
                     plt.xticks(rotation=45)
@@ -441,7 +613,7 @@ def main():
                     
                     # Training loss
                     ax1.plot(losses)
-                    ax1.set_title('Model Training Loss')
+                    ax1.set_title(f'{st.session_state.current_ticker} LSTM Training Loss')
                     ax1.set_xlabel('Epoch')
                     ax1.set_ylabel('Loss')
                     
@@ -453,7 +625,7 @@ def main():
                     ax2.plot(train_dates, train_predictions.flatten(), label='Train Predictions', alpha=0.8)
                     ax2.plot(test_dates, test_predictions.flatten(), label='Test Predictions', alpha=0.8)
                     ax2.legend()
-                    ax2.set_title('LSTM Predictions vs Actual')
+                    ax2.set_title(f'{st.session_state.current_ticker} LSTM Predictions vs Actual')
                     ax2.set_xlabel('Date')
                     ax2.set_ylabel('Price ($)')
                     plt.xticks(rotation=45)
