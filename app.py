@@ -342,7 +342,7 @@ class LSTMModel(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
-        # Increased complexity for better predictions
+        # Enhanced complexity for better predictions
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.3)
         self.dropout1 = nn.Dropout(0.3)
         self.fc1 = nn.Linear(hidden_size, 64)
@@ -352,9 +352,10 @@ class LSTMModel(nn.Module):
         self.fc3 = nn.Linear(32, output_size)
         
     def forward(self, x):
-        # Initialize hidden state
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size)
+        # Initialize hidden state with proper device placement
+        device = x.device
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(device)
         
         # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))
@@ -371,9 +372,20 @@ class LSTMModel(nn.Module):
         return out
 
 def create_lstm_model(sequence_length):
-    """Create enhanced PyTorch LSTM model"""
+    """Create enhanced PyTorch LSTM model with GPU support"""
     model = LSTMModel(input_size=1, hidden_size=128, num_layers=3, output_size=1)
-    return model
+    
+    # Move to best available device (CUDA > MPS > CPU)
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+    
+    model = model.to(device)
+    
+    return model, device
 
 def main():
     # Initialize session state for uploaded data and UI state
@@ -670,7 +682,7 @@ def main():
     
     
     with tab4:
-        st.header("LSTM Deep Learning Analysis")
+        st.header("🧠 LSTM Deep Learning Analysis")
         
         st.info("💡 **Recommended starting point**: Sequence Length = 10 days (selected by default) works well for most stocks.")
         
@@ -691,14 +703,23 @@ def main():
                     X_train, X_test = X[:train_size], X[train_size:]
                     y_train, y_test = y[:train_size], y[train_size:]
                     
-                    # Convert to PyTorch tensors
-                    X_train_tensor = torch.FloatTensor(X_train)
-                    y_train_tensor = torch.FloatTensor(y_train.reshape(-1, 1))
-                    X_test_tensor = torch.FloatTensor(X_test)
-                    y_test_tensor = torch.FloatTensor(y_test.reshape(-1, 1))
+                    # Create model and get device
+                    model, device = create_lstm_model(sequence_length)
                     
-                    # Create model
-                    model = create_lstm_model(sequence_length)
+                    # Show device info to user
+                    if device.type == 'cuda':
+                        st.success(f"🚀 Using NVIDIA GPU acceleration: {torch.cuda.get_device_name(0)}")
+                    elif device.type == 'mps':
+                        st.success("🍎 Using Apple Silicon GPU acceleration (MPS)")
+                    else:
+                        st.info("🖥️ Using CPU (consider enabling GPU for faster training)")
+                    
+                    # Convert to PyTorch tensors and move to device
+                    X_train_tensor = torch.FloatTensor(X_train).to(device)
+                    y_train_tensor = torch.FloatTensor(y_train.reshape(-1, 1)).to(device)
+                    X_test_tensor = torch.FloatTensor(X_test).to(device)
+                    y_test_tensor = torch.FloatTensor(y_test.reshape(-1, 1)).to(device)
+                    
                     criterion = nn.MSELoss()
                     optimizer = optim.Adam(model.parameters(), lr=0.001)
                     
@@ -729,8 +750,8 @@ def main():
                     # Make predictions
                     model.eval()
                     with torch.no_grad():
-                        train_predictions = model(X_train_tensor).numpy()
-                        test_predictions = model(X_test_tensor).numpy()
+                        train_predictions = model(X_train_tensor).cpu().numpy()
+                        test_predictions = model(X_test_tensor).cpu().numpy()
                     
                     # Inverse transform
                     train_predictions = scaler.inverse_transform(train_predictions)
@@ -809,10 +830,10 @@ def main():
                     
                     # Future prediction
                     st.subheader("Next Day Prediction")
-                    last_sequence = torch.FloatTensor(X[-1].reshape(1, sequence_length, 1))
+                    last_sequence = torch.FloatTensor(X[-1].reshape(1, sequence_length, 1)).to(device)
                     model.eval()
                     with torch.no_grad():
-                        next_prediction = model(last_sequence).numpy()
+                        next_prediction = model(last_sequence).cpu().numpy()
                     next_price = scaler.inverse_transform(next_prediction)[0][0]
                     
                     st.success(f"Predicted next day closing price: ${next_price:.2f}")
