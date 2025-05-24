@@ -92,12 +92,21 @@ def create_candlestick_chart(df):
         name="SPY"
     ))
     
+    # Set the x-axis range to show full dataset by default
     fig.update_layout(
         title="SPY Candlestick Chart",
         xaxis_title="Date",
         yaxis_title="Price ($)",
         height=500,
-        showlegend=False
+        showlegend=False,
+        xaxis=dict(
+            range=[df['Date'].min(), df['Date'].max()],
+            rangeslider=dict(visible=True),  # Add range slider for easy navigation
+            type="date"
+        ),
+        yaxis=dict(
+            range=[df['Low'].min() * 0.98, df['High'].max() * 1.02]  # Add some padding
+        )
     )
     
     return fig
@@ -109,7 +118,13 @@ def create_volume_chart(df):
                  color='Volume',
                  color_continuous_scale='viridis')
     
-    fig.update_layout(height=400)
+    fig.update_layout(
+        height=400,
+        xaxis=dict(
+            range=[df['Date'].min(), df['Date'].max()],
+            type="date"
+        )
+    )
     return fig
 
 def create_correlation_heatmap(df):
