@@ -338,6 +338,13 @@ def main():
         st.cache_data.clear()
         st.rerun()
     
+    # Reset to default SPY data
+    if st.sidebar.button("🏠 Reset to Default (SPY)"):
+        st.session_state.uploaded_data = None
+        st.session_state.current_ticker = "SPY"
+        st.cache_data.clear()
+        st.rerun()
+    
     st.sidebar.markdown("---")
     
     # File upload section - always visible
