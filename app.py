@@ -370,11 +370,13 @@ def create_lstm_model(sequence_length):
     return model
 
 def main():
-    # Initialize session state for uploaded data
+    # Initialize session state for uploaded data and UI state
     if 'uploaded_data' not in st.session_state:
         st.session_state.uploaded_data = None
     if 'current_ticker' not in st.session_state:
         st.session_state.current_ticker = "SPY"
+    if 'active_tab' not in st.session_state:
+        st.session_state.active_tab = "📊 Data Overview"
     
     # Dynamic header with current ticker
     st.markdown(f'<h1 class="main-header">📈 {st.session_state.current_ticker} Finance Dashboard</h1>', unsafe_allow_html=True)
@@ -414,6 +416,20 @@ def main():
     ).upper()
     
     st.sidebar.caption("💡 **Tips:** Keep CSV files under 10MB. Most daily stock data should be much smaller than this.")
+    
+    st.sidebar.markdown("---")
+    
+    # Tab selection in sidebar to prevent jumping around
+    st.sidebar.subheader("📄 Dashboard Sections")
+    selected_tab = st.sidebar.radio(
+        "Choose section:",
+        ["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"],
+        index=["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"].index(st.session_state.active_tab) if st.session_state.active_tab in ["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"] else 0,
+        key="tab_selection"
+    )
+    
+    # Update session state when tab changes
+    st.session_state.active_tab = selected_tab
     
     # Process uploaded file
     use_uploaded_data = False
@@ -470,10 +486,8 @@ def main():
         st.error("Failed to load data. Please check the data file and try again.")
         return
     
-    # Main content tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"])
-    
-    with tab1:
+    # Render content based on selected tab (no jumping around!)
+    if selected_tab == "📊 Data Overview":
         st.header("Data Overview")
         
         # Key metrics
@@ -500,7 +514,7 @@ def main():
         st.subheader("Statistical Summary")
         st.dataframe(df.describe(), use_container_width=True)
     
-    with tab2:
+    elif selected_tab == "📈 Visualizations":
         st.header("Stock Visualizations")
         
         # Candlestick chart
@@ -523,7 +537,7 @@ def main():
         pair_fig = create_pairplot(df, st.session_state.current_ticker)
         st.pyplot(pair_fig)
     
-    with tab3:
+    elif selected_tab == "🔮 ARIMA Analysis":
         st.header("ARIMA Time Series Analysis")
         
         st.info("💡 **Recommended starting point**: p=1, d=1, q=1 (selected by default) works well for most stocks including SPY.")
@@ -535,6 +549,7 @@ def main():
                 "AR (p) - AutoRegressive", 
                 [0, 1, 2, 3], 
                 index=1,
+                key="arima_p",
                 help="How much yesterday's price influences today's prediction. **p=1**: Good for stable stocks (blue chips, utilities). **p=2**: Better for volatile stocks (tech, growth). **p=3**: For highly unpredictable stocks. Start with p=1 for established companies."
             )
         with col2:
@@ -542,6 +557,7 @@ def main():
                 "I (d) - Integration", 
                 [0, 1, 2], 
                 index=1,
+                key="arima_d",
                 help="Removes price trends to focus on price changes. **d=1**: Standard for stock prices (recommended). **d=0**: Only for already stable price series. **d=2**: Rarely needed. Keep at d=1 for normal stock analysis."
             )
         with col3:
@@ -549,10 +565,11 @@ def main():
                 "MA (q) - Moving Average", 
                 [0, 1, 2, 3], 
                 index=1,
+                key="arima_q",
                 help="How much recent market 'shocks' affect predictions. **q=1**: Good for most stocks, captures immediate reactions. **q=2**: For stocks sensitive to news/events. **q=0**: For very predictable stocks. q=1 works well for SPY and major ETFs."
             )
         
-        if st.button("Run ARIMA Analysis"):
+        if st.button("Run ARIMA Analysis", key="run_arima"):
             with st.spinner("Training ARIMA model..."):
                 ts_data = prepare_arima_data(df)
                 model, forecast, conf_int = fit_arima_model(ts_data, order=(p, d, q))
@@ -634,7 +651,7 @@ def main():
                     with st.expander("❓ How to Interpret These Results"):
                         st.markdown(explain_arima_results())
     
-    with tab4:
+    elif selected_tab == "🧠 LSTM Analysis":
         st.header("LSTM Deep Learning Analysis")
         
         st.info("💡 **Recommended starting point**: Sequence Length = 10 days (selected by default) works well for most stocks.")
@@ -642,10 +659,11 @@ def main():
         sequence_length = st.slider(
             "Sequence Length (days)", 
             5, 20, 10,
+            key="lstm_sequence_length",
             help="How many previous trading days the AI model looks at to predict the next day. **5-7 days**: For highly volatile stocks that change quickly. **10-12 days**: Good for most stocks including SPY (captures ~2 weeks). **15-20 days**: For very stable stocks or longer-term patterns. More days = more context but slower predictions."
         )
         
-        if st.button("Run LSTM Analysis"):
+        if st.button("Run LSTM Analysis", key="run_lstm"):
             with st.spinner("Training LSTM model..."):
                 X, y, scaler = prepare_lstm_data(df, sequence_length)
                 
