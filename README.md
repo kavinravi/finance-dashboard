@@ -1,6 +1,10 @@
-# 📈 SPY Finance Dashboard
+# 📈 Finance Dashboard
 
-A comprehensive finance dashboard for SPY stock analysis featuring interactive visualizations, ARIMA time series forecasting, and LSTM deep learning predictions.
+A comprehensive finance dashboard for stock market analysis featuring interactive visualizations, ARIMA time series forecasting, and PyTorch LSTM deep learning predictions. 
+
+**Current Focus**: SPY (S&P 500 ETF) with complete 2024 calendar year data (253 trading days).
+
+**Coming Soon**: Multi-stock support, sector analysis, portfolio optimization, and extended historical data coverage.
 
 ## 🚀 Features
 
@@ -58,15 +62,38 @@ finance-dashboard/
 └── README.md           # This file
 ```
 
-## 📊 Data Format
+## 📊 Data Information
 
-The `SPY.csv` file should contain the following columns:
+### Current Dataset Coverage
+The dashboard currently analyzes **SPY (S&P 500 ETF) data for the complete 2024 calendar year**:
+- **Date Range**: January 2, 2024 → December 31, 2024
+- **Trading Days**: 253 complete sessions
+- **Data Quality**: High-frequency OHLCV data from MarketWatch
+
+### Future Expansion Plans
+- **Multiple Stocks**: Support for individual stocks (AAPL, GOOGL, TSLA, etc.)
+- **Sector ETFs**: Technology (XLK), Healthcare (XLV), Finance (XLF), etc.
+- **Extended Timeframes**: Multi-year historical analysis
+- **Real-time Data**: Live market feeds and intraday analysis
+- **Portfolio Analysis**: Multi-asset correlation and optimization
+
+### Data Format
+The `SPY.csv` file contains the following columns:
 - `Date`: Trading date (MM/DD/YYYY format)
 - `Open`: Opening price
 - `High`: Highest price of the day
 - `Low`: Lowest price of the day
 - `Close`: Closing price
 - `Volume`: Trading volume
+
+### Dataset Notes
+**Update**: Initially used a partial year dataset (Apr 2024 - May 2025), but switched to full 2024 calendar year for better analysis quality. A complete calendar year provides:
+- More comprehensive seasonal pattern analysis
+- Better model training with complete business cycles
+- Avoidance of early 2025 market volatility
+- Professional standard for annual financial reporting
+
+**Development Roadmap**: While currently focused on SPY for proof-of-concept, the architecture is designed for easy expansion to multiple assets. The modular design allows for seamless integration of additional stocks, ETFs, and market data sources.
 
 ## 🔧 Technical Details
 
@@ -77,7 +104,7 @@ The `SPY.csv` file should contain the following columns:
 - **Plotly**: Interactive charts
 - **Scikit-learn**: Data preprocessing
 - **Statsmodels**: ARIMA modeling
-- **TensorFlow**: LSTM neural networks
+- **PyTorch**: LSTM neural networks (replaced TensorFlow for better compatibility)
 
 ### Models
 
@@ -110,10 +137,12 @@ The `SPY.csv` file should contain the following columns:
 
 ## 🚀 Getting Started
 
-1. Make sure your `SPY.csv` file is in the `data/` directory
+1. Make sure your data file is in the `data/` directory (currently `SPY.csv`)
 2. Install dependencies: `pip install -r requirements.txt`
 3. Run the app: `streamlit run app.py`
 4. Navigate through the tabs to explore different analyses
+
+**Note**: Currently supports SPY data, but the framework is ready for multi-stock expansion.
 
 ## 📝 Notes
 
