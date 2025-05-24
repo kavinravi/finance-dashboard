@@ -396,6 +396,9 @@ def main():
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "📊 Data Overview"
     
+    # Known issue warning - prominent but not too intrusive
+    st.warning("⚠️ **KNOWN ISSUE:** Sometimes upon customizing sliders or dropdown boxes the site will snap back to \"Data Overview\". We're working on a permanent fix.", icon="⚠️")
+    
     # Dynamic header with current ticker
     st.markdown(f'<h1 class="main-header">📈 {st.session_state.current_ticker} Finance Dashboard</h1>', unsafe_allow_html=True)
     
