@@ -48,26 +48,38 @@ st.markdown("""
 @st.cache_data
 def load_data():
     """Load and preprocess the SPY data"""
-    df = pd.read_csv('data/SPY.csv')
+    try:
+        df = pd.read_csv('data/SPY.csv')
+        
+        # Clean the data
+        df['Date'] = pd.to_datetime(df['Date'])
+        
+        # Handle Volume column (remove commas)
+        if df['Volume'].dtype == 'object':
+            df['Volume'] = df['Volume'].str.replace(',', '').astype(int)
+        
+        # Handle price columns - check if they're strings or already numeric
+        for col in ['Open', 'High', 'Low', 'Close']:
+            if df[col].dtype == 'object':
+                # If they're strings, remove quotes and convert to float
+                df[col] = df[col].str.replace('"', '').astype(float)
+            # If they're already numeric, leave them as is
+        
+        # Sort by date
+        df = df.sort_values('Date').reset_index(drop=True)
+        
+        # Calculate additional technical indicators
+        df['Daily_Return'] = df['Close'].pct_change()
+        df['High_Low_Pct'] = (df['High'] - df['Low']) / df['Close'] * 100
+        df['Price_Change'] = df['Close'] - df['Open']
+        df['Volatility'] = df['Daily_Return'].rolling(window=5).std()
+        
+        return df
     
-    # Clean the data
-    df['Date'] = pd.to_datetime(df['Date'])
-    df['Volume'] = df['Volume'].str.replace(',', '').astype(int)
-    
-    # Remove dollar signs and convert to float
-    for col in ['Open', 'High', 'Low', 'Close']:
-        df[col] = df[col].str.replace('"', '').astype(float)
-    
-    # Sort by date
-    df = df.sort_values('Date').reset_index(drop=True)
-    
-    # Calculate additional technical indicators
-    df['Daily_Return'] = df['Close'].pct_change()
-    df['High_Low_Pct'] = (df['High'] - df['Low']) / df['Close'] * 100
-    df['Price_Change'] = df['Close'] - df['Open']
-    df['Volatility'] = df['Daily_Return'].rolling(window=5).std()
-    
-    return df
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        st.info("Please check that the SPY.csv file is properly formatted.")
+        return pd.DataFrame()  # Return empty dataframe to prevent crashes
 
 def create_candlestick_chart(df):
     """Create an interactive candlestick chart"""
@@ -201,6 +213,11 @@ def main():
     
     # Load data
     df = load_data()
+    
+    # Check if data loaded successfully
+    if df.empty:
+        st.error("Failed to load data. Please check the data file and try again.")
+        return
     
     # Sidebar
     st.sidebar.title("Dashboard Controls")
