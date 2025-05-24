@@ -14,6 +14,11 @@ import yfinance as yf
 import requests
 from datetime import datetime, timedelta
 import time
+import os
+from dotenv import load_dotenv
+
+# Load environment variables for local development
+load_dotenv()
 
 # Machine Learning imports
 from sklearn.preprocessing import MinMaxScaler
@@ -492,6 +497,170 @@ def get_ticker_info(ticker):
             'market_cap': 'N/A',
             'currency': 'USD'
         }
+
+def get_api_keys():
+    """Securely get API keys from environment variables or Streamlit secrets"""
+    try:
+        # Try Streamlit secrets first (for cloud deployment)
+        if hasattr(st, 'secrets'):
+            return {
+                'fmp': st.secrets.get('FMP_API_KEY', ''),
+                'alpha_vantage': st.secrets.get('ALPHA_VANTAGE_API_KEY', ''),
+                'fmp_rate_limit': int(st.secrets.get('FMP_RATE_LIMIT', 60)),
+                'alpha_rate_limit': int(st.secrets.get('ALPHA_VANTAGE_RATE_LIMIT', 5))
+            }
+    except:
+        pass
+    
+    # Fall back to environment variables (for local development)
+    return {
+        'fmp': os.getenv('FMP_API_KEY', ''),
+        'alpha_vantage': os.getenv('ALPHA_VANTAGE_API_KEY', ''),
+        'fmp_rate_limit': int(os.getenv('FMP_RATE_LIMIT', 60)),
+        'alpha_rate_limit': int(os.getenv('ALPHA_VANTAGE_RATE_LIMIT', 5))
+    }
+
+def check_api_keys_available():
+    """Check if API keys are properly configured"""
+    keys = get_api_keys()
+    return {
+        'fmp_available': bool(keys['fmp']),
+        'alpha_available': bool(keys['alpha_vantage']),
+        'keys': keys
+    }
+
+@st.cache_data(ttl=300)  # Cache for 5 minutes to respect rate limits
+def fetch_fmp_fundamentals(ticker, api_key):
+    """Fetch fundamental data from Financial Modeling Prep"""
+    try:
+        # Company profile
+        profile_url = f"https://financialmodelingprep.com/api/v3/profile/{ticker}"
+        profile_params = {'apikey': api_key}
+        
+        profile_response = requests.get(profile_url, params=profile_params, timeout=10)
+        
+        if profile_response.status_code != 200:
+            return None, f"FMP API error: {profile_response.status_code}"
+        
+        profile_data = profile_response.json()
+        if not profile_data:
+            return None, f"No fundamental data found for {ticker}"
+        
+        # Financial ratios
+        ratios_url = f"https://financialmodelingprep.com/api/v3/ratios/{ticker}"
+        ratios_params = {'apikey': api_key, 'limit': 1}
+        
+        ratios_response = requests.get(ratios_url, params=ratios_params, timeout=10)
+        ratios_data = ratios_response.json() if ratios_response.status_code == 200 else []
+        
+        # Income statement (latest year)
+        income_url = f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}"
+        income_params = {'apikey': api_key, 'limit': 1}
+        
+        income_response = requests.get(income_url, params=income_params, timeout=10)
+        income_data = income_response.json() if income_response.status_code == 200 else []
+        
+        return {
+            'profile': profile_data[0] if profile_data else {},
+            'ratios': ratios_data[0] if ratios_data else {},
+            'income': income_data[0] if income_data else {}
+        }, None
+        
+    except requests.RequestException as e:
+        return None, f"FMP API request failed: {str(e)}"
+    except Exception as e:
+        return None, f"FMP data processing error: {str(e)}"
+
+@st.cache_data(ttl=300)  # Cache for 5 minutes to respect rate limits
+def fetch_alpha_vantage_indicators(ticker, api_key):
+    """Fetch additional technical indicators from Alpha Vantage"""
+    try:
+        indicators = {}
+        
+        # RSI
+        rsi_url = "https://www.alphavantage.co/query"
+        rsi_params = {
+            'function': 'RSI',
+            'symbol': ticker,
+            'interval': 'daily',
+            'time_period': 14,
+            'series_type': 'close',
+            'apikey': api_key
+        }
+        
+        time.sleep(12)  # Rate limiting - Alpha Vantage free tier allows 5 requests per minute
+        rsi_response = requests.get(rsi_url, params=rsi_params, timeout=15)
+        
+        if rsi_response.status_code == 200:
+            rsi_data = rsi_response.json()
+            if 'Technical Analysis: RSI' in rsi_data:
+                indicators['rsi'] = rsi_data['Technical Analysis: RSI']
+        
+        # MACD
+        macd_url = "https://www.alphavantage.co/query"
+        macd_params = {
+            'function': 'MACD',
+            'symbol': ticker,
+            'interval': 'daily',
+            'series_type': 'close',
+            'apikey': api_key
+        }
+        
+        time.sleep(12)  # Rate limiting
+        macd_response = requests.get(macd_url, params=macd_params, timeout=15)
+        
+        if macd_response.status_code == 200:
+            macd_data = macd_response.json()
+            if 'Technical Analysis: MACD' in macd_data:
+                indicators['macd'] = macd_data['Technical Analysis: MACD']
+        
+        return indicators, None
+        
+    except requests.RequestException as e:
+        return None, f"Alpha Vantage API request failed: {str(e)}"
+    except Exception as e:
+        return None, f"Alpha Vantage data processing error: {str(e)}"
+
+def format_fundamental_data(fmp_data):
+    """Format FMP fundamental data for display"""
+    if not fmp_data:
+        return {}
+    
+    profile = fmp_data.get('profile', {})
+    ratios = fmp_data.get('ratios', {})
+    income = fmp_data.get('income', {})
+    
+    return {
+        'Company Info': {
+            'Name': profile.get('companyName', 'N/A'),
+            'Sector': profile.get('sector', 'N/A'),
+            'Industry': profile.get('industry', 'N/A'),
+            'Country': profile.get('country', 'N/A'),
+            'Exchange': profile.get('exchangeShortName', 'N/A'),
+            'Market Cap': f"${profile.get('mktCap', 0):,.0f}" if profile.get('mktCap') else 'N/A',
+            'Employees': f"{profile.get('fullTimeEmployees', 0):,}" if profile.get('fullTimeEmployees') else 'N/A'
+        },
+        'Valuation Ratios': {
+            'P/E Ratio': f"{ratios.get('priceEarningsRatio', 'N/A'):.2f}" if ratios.get('priceEarningsRatio') else 'N/A',
+            'P/B Ratio': f"{ratios.get('priceToBookRatio', 'N/A'):.2f}" if ratios.get('priceToBookRatio') else 'N/A',
+            'P/S Ratio': f"{ratios.get('priceToSalesRatio', 'N/A'):.2f}" if ratios.get('priceToSalesRatio') else 'N/A',
+            'EV/EBITDA': f"{ratios.get('enterpriseValueMultiple', 'N/A'):.2f}" if ratios.get('enterpriseValueMultiple') else 'N/A',
+            'Dividend Yield': f"{ratios.get('dividendYield', 'N/A'):.2%}" if ratios.get('dividendYield') else 'N/A'
+        },
+        'Financial Health': {
+            'Current Ratio': f"{ratios.get('currentRatio', 'N/A'):.2f}" if ratios.get('currentRatio') else 'N/A',
+            'Debt to Equity': f"{ratios.get('debtEquityRatio', 'N/A'):.2f}" if ratios.get('debtEquityRatio') else 'N/A',
+            'ROE': f"{ratios.get('returnOnEquity', 'N/A'):.2%}" if ratios.get('returnOnEquity') else 'N/A',
+            'ROA': f"{ratios.get('returnOnAssets', 'N/A'):.2%}" if ratios.get('returnOnAssets') else 'N/A',
+            'Gross Margin': f"{ratios.get('grossProfitMargin', 'N/A'):.2%}" if ratios.get('grossProfitMargin') else 'N/A'
+        },
+        'Latest Financials': {
+            'Revenue': f"${income.get('revenue', 0):,.0f}" if income.get('revenue') else 'N/A',
+            'Net Income': f"${income.get('netIncome', 0):,.0f}" if income.get('netIncome') else 'N/A',
+            'EPS': f"${income.get('eps', 'N/A'):.2f}" if income.get('eps') else 'N/A',
+            'Operating Income': f"${income.get('operatingIncome', 0):,.0f}" if income.get('operatingIncome') else 'N/A'
+        }
+    }
 
 def main():
     # Initialize session state for uploaded data and UI state
@@ -1002,9 +1171,65 @@ def main():
             with col_opt2:
                 include_advanced = st.checkbox("Advanced Indicators", value=True, help="Additional indicators for professional analysis")
                 export_csv = st.checkbox("Generate CSV Export", value=True, help="Create downloadable CSV file")
+            
+            # Phase 2: API Data Sources
+            st.subheader("🔌 Professional API Data Sources")
+            
+            # Check API key availability
+            api_status = check_api_keys_available()
+            
+            col_api1, col_api2 = st.columns(2)
+            with col_api1:
+                include_fundamentals = st.checkbox(
+                    "Fundamental Analysis (FMP)", 
+                    value=api_status['fmp_available'],
+                    disabled=not api_status['fmp_available'],
+                    help="P/E ratios, financial statements, company fundamentals"
+                )
+                if not api_status['fmp_available']:
+                    st.caption("⚠️ FMP API key not configured")
+            
+            with col_api2:
+                include_alpha_indicators = st.checkbox(
+                    "Enhanced Indicators (Alpha Vantage)", 
+                    value=api_status['alpha_available'],
+                    disabled=not api_status['alpha_available'],
+                    help="Professional-grade RSI, MACD, and additional indicators"
+                )
+                if not api_status['alpha_available']:
+                    st.caption("⚠️ Alpha Vantage API key not configured")
         
         with col2:
             st.subheader("ℹ️ Collection Info")
+            
+            # API Status Display
+            st.write("**🔌 API Status:**")
+            fmp_status = "🟢 Active" if api_status['fmp_available'] else "🔴 Not configured"
+            alpha_status = "🟢 Active" if api_status['alpha_available'] else "🔴 Not configured"
+            st.write(f"• FMP: {fmp_status}")
+            st.write(f"• Alpha Vantage: {alpha_status}")
+            
+            if not api_status['fmp_available'] or not api_status['alpha_available']:
+                with st.expander("🔧 How to Configure API Keys"):
+                    st.markdown("""
+                    **For Streamlit Cloud:**
+                    1. Go to your app settings
+                    2. Add secrets in the format:
+                    ```
+                    FMP_API_KEY = "your_fmp_key"
+                    ALPHA_VANTAGE_API_KEY = "your_alpha_key"
+                    ```
+                    
+                    **For Local Development:**
+                    1. Create a `.env` file in your project root
+                    2. Add your API keys:
+                    ```
+                    FMP_API_KEY=your_fmp_key
+                    ALPHA_VANTAGE_API_KEY=your_alpha_key
+                    ```
+                    """)
+            
+            st.write("---")
             
             # Show ticker info if valid
             if advanced_ticker and len(advanced_ticker) > 0:
@@ -1056,6 +1281,22 @@ def main():
                 if include_advanced:
                     yf_data = calculate_advanced_indicators(yf_data)
                 
+                # Phase 2: Collect API data
+                fundamental_data = None
+                alpha_indicators = None
+                
+                if include_fundamentals and api_status['fmp_available']:
+                    with st.spinner("Fetching fundamental data from FMP..."):
+                        fundamental_data, fmp_error = fetch_fmp_fundamentals(advanced_ticker, api_status['keys']['fmp'])
+                        if fmp_error:
+                            st.warning(f"FMP API: {fmp_error}")
+                
+                if include_alpha_indicators and api_status['alpha_available']:
+                    with st.spinner("Fetching enhanced indicators from Alpha Vantage... (this may take ~30 seconds due to rate limits)"):
+                        alpha_indicators, alpha_error = fetch_alpha_vantage_indicators(advanced_ticker, api_status['keys']['alpha_vantage'])
+                        if alpha_error:
+                            st.warning(f"Alpha Vantage API: {alpha_error}")
+                
                 # Display success metrics
                 st.success(f"✅ Successfully collected {len(yf_data)} trading days of data for {advanced_ticker}")
                 
@@ -1066,7 +1307,41 @@ def main():
                 with col_summary2:
                     st.metric("Date Range", f"{(end_date - start_date).days} days")
                 with col_summary3:
-                    st.metric("Indicators", f"{len(yf_data.columns)} columns")
+                    indicators_count = len(yf_data.columns)
+                    if fundamental_data:
+                        indicators_count += 4  # Categories of fundamental data
+                    if alpha_indicators:
+                        indicators_count += len(alpha_indicators)
+                    st.metric("Total Indicators", f"{indicators_count} sources")
+                
+                # Phase 2: Display Fundamental Analysis
+                if fundamental_data:
+                    st.subheader("💼 Fundamental Analysis")
+                    formatted_fundamentals = format_fundamental_data(fundamental_data)
+                    
+                    fund_col1, fund_col2 = st.columns(2)
+                    
+                    with fund_col1:
+                        if 'Company Info' in formatted_fundamentals:
+                            st.write("**📊 Company Information:**")
+                            for key, value in formatted_fundamentals['Company Info'].items():
+                                st.write(f"• {key}: {value}")
+                        
+                        if 'Valuation Ratios' in formatted_fundamentals:
+                            st.write("**💰 Valuation Ratios:**")
+                            for key, value in formatted_fundamentals['Valuation Ratios'].items():
+                                st.write(f"• {key}: {value}")
+                    
+                    with fund_col2:
+                        if 'Financial Health' in formatted_fundamentals:
+                            st.write("**🏥 Financial Health:**")
+                            for key, value in formatted_fundamentals['Financial Health'].items():
+                                st.write(f"• {key}: {value}")
+                        
+                        if 'Latest Financials' in formatted_fundamentals:
+                            st.write("**📈 Latest Financials:**")
+                            for key, value in formatted_fundamentals['Latest Financials'].items():
+                                st.write(f"• {key}: {value}")
                 
                 # Show recent data
                 st.subheader("📋 Data Preview")
