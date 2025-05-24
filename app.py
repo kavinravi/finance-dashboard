@@ -546,12 +546,17 @@ def fetch_fmp_fundamentals(ticker, api_key):
         if not profile_data:
             return None, f"No fundamental data found for {ticker}"
         
+        # Add small delay to respect rate limits
+        time.sleep(1)
+        
         # Financial ratios
         ratios_url = f"https://financialmodelingprep.com/api/v3/ratios/{ticker}"
         ratios_params = {'apikey': api_key, 'limit': 1}
         
         ratios_response = requests.get(ratios_url, params=ratios_params, timeout=10)
         ratios_data = ratios_response.json() if ratios_response.status_code == 200 else []
+        
+        time.sleep(1)  # Rate limiting
         
         # Income statement (latest year)
         income_url = f"https://financialmodelingprep.com/api/v3/income-statement/{ticker}"
@@ -560,11 +565,14 @@ def fetch_fmp_fundamentals(ticker, api_key):
         income_response = requests.get(income_url, params=income_params, timeout=10)
         income_data = income_response.json() if income_response.status_code == 200 else []
         
-        return {
-            'profile': profile_data[0] if profile_data else {},
-            'ratios': ratios_data[0] if ratios_data else {},
-            'income': income_data[0] if income_data else {}
-        }, None
+        # Safely extract data with error handling
+        result_data = {
+            'profile': profile_data[0] if isinstance(profile_data, list) and profile_data else (profile_data if isinstance(profile_data, dict) else {}),
+            'ratios': ratios_data[0] if isinstance(ratios_data, list) and ratios_data else (ratios_data if isinstance(ratios_data, dict) else {}),
+            'income': income_data[0] if isinstance(income_data, list) and income_data else (income_data if isinstance(income_data, dict) else {})
+        }
+        
+        return result_data, None
         
     except requests.RequestException as e:
         return None, f"FMP API request failed: {str(e)}"
@@ -622,7 +630,7 @@ def fetch_alpha_vantage_indicators(ticker, api_key):
         return None, f"Alpha Vantage data processing error: {str(e)}"
 
 def format_fundamental_data(fmp_data):
-    """Format FMP fundamental data for display"""
+    """Format FMP fundamental data for display with robust error handling"""
     if not fmp_data:
         return {}
     
@@ -630,35 +638,71 @@ def format_fundamental_data(fmp_data):
     ratios = fmp_data.get('ratios', {})
     income = fmp_data.get('income', {})
     
+    def safe_format_number(value, format_type='currency', decimals=2):
+        """Safely format numbers with error handling"""
+        try:
+            if value is None or value == '':
+                return 'N/A'
+            
+            # Convert to float if it's a string
+            if isinstance(value, str):
+                # Remove common formatting characters
+                clean_value = value.replace(',', '').replace('$', '').replace('%', '')
+                if clean_value == '' or clean_value.lower() in ['n/a', 'null', 'none']:
+                    return 'N/A'
+                value = float(clean_value)
+            
+            if not isinstance(value, (int, float)):
+                return 'N/A'
+            
+            if format_type == 'currency':
+                return f"${value:,.{decimals}f}"
+            elif format_type == 'percentage':
+                return f"{value:.{decimals}%}"
+            elif format_type == 'number':
+                return f"{value:,.{decimals}f}"
+            elif format_type == 'count':
+                return f"{int(value):,}"
+            else:
+                return f"{value:.{decimals}f}"
+                
+        except (ValueError, TypeError, AttributeError):
+            return 'N/A'
+    
+    def safe_get_string(data, key, default='N/A'):
+        """Safely get string values"""
+        value = data.get(key, default)
+        return str(value) if value is not None else default
+    
     return {
         'Company Info': {
-            'Name': profile.get('companyName', 'N/A'),
-            'Sector': profile.get('sector', 'N/A'),
-            'Industry': profile.get('industry', 'N/A'),
-            'Country': profile.get('country', 'N/A'),
-            'Exchange': profile.get('exchangeShortName', 'N/A'),
-            'Market Cap': f"${profile.get('mktCap', 0):,.0f}" if profile.get('mktCap') else 'N/A',
-            'Employees': f"{profile.get('fullTimeEmployees', 0):,}" if profile.get('fullTimeEmployees') else 'N/A'
+            'Name': safe_get_string(profile, 'companyName'),
+            'Sector': safe_get_string(profile, 'sector'),
+            'Industry': safe_get_string(profile, 'industry'),
+            'Country': safe_get_string(profile, 'country'),
+            'Exchange': safe_get_string(profile, 'exchangeShortName'),
+            'Market Cap': safe_format_number(profile.get('mktCap'), 'currency', 0),
+            'Employees': safe_format_number(profile.get('fullTimeEmployees'), 'count', 0)
         },
         'Valuation Ratios': {
-            'P/E Ratio': f"{ratios.get('priceEarningsRatio', 'N/A'):.2f}" if ratios.get('priceEarningsRatio') else 'N/A',
-            'P/B Ratio': f"{ratios.get('priceToBookRatio', 'N/A'):.2f}" if ratios.get('priceToBookRatio') else 'N/A',
-            'P/S Ratio': f"{ratios.get('priceToSalesRatio', 'N/A'):.2f}" if ratios.get('priceToSalesRatio') else 'N/A',
-            'EV/EBITDA': f"{ratios.get('enterpriseValueMultiple', 'N/A'):.2f}" if ratios.get('enterpriseValueMultiple') else 'N/A',
-            'Dividend Yield': f"{ratios.get('dividendYield', 'N/A'):.2%}" if ratios.get('dividendYield') else 'N/A'
+            'P/E Ratio': safe_format_number(ratios.get('priceEarningsRatio'), 'number'),
+            'P/B Ratio': safe_format_number(ratios.get('priceToBookRatio'), 'number'),
+            'P/S Ratio': safe_format_number(ratios.get('priceToSalesRatio'), 'number'),
+            'EV/EBITDA': safe_format_number(ratios.get('enterpriseValueMultiple'), 'number'),
+            'Dividend Yield': safe_format_number(ratios.get('dividendYield'), 'percentage')
         },
         'Financial Health': {
-            'Current Ratio': f"{ratios.get('currentRatio', 'N/A'):.2f}" if ratios.get('currentRatio') else 'N/A',
-            'Debt to Equity': f"{ratios.get('debtEquityRatio', 'N/A'):.2f}" if ratios.get('debtEquityRatio') else 'N/A',
-            'ROE': f"{ratios.get('returnOnEquity', 'N/A'):.2%}" if ratios.get('returnOnEquity') else 'N/A',
-            'ROA': f"{ratios.get('returnOnAssets', 'N/A'):.2%}" if ratios.get('returnOnAssets') else 'N/A',
-            'Gross Margin': f"{ratios.get('grossProfitMargin', 'N/A'):.2%}" if ratios.get('grossProfitMargin') else 'N/A'
+            'Current Ratio': safe_format_number(ratios.get('currentRatio'), 'number'),
+            'Debt to Equity': safe_format_number(ratios.get('debtEquityRatio'), 'number'),
+            'ROE': safe_format_number(ratios.get('returnOnEquity'), 'percentage'),
+            'ROA': safe_format_number(ratios.get('returnOnAssets'), 'percentage'),
+            'Gross Margin': safe_format_number(ratios.get('grossProfitMargin'), 'percentage')
         },
         'Latest Financials': {
-            'Revenue': f"${income.get('revenue', 0):,.0f}" if income.get('revenue') else 'N/A',
-            'Net Income': f"${income.get('netIncome', 0):,.0f}" if income.get('netIncome') else 'N/A',
-            'EPS': f"${income.get('eps', 'N/A'):.2f}" if income.get('eps') else 'N/A',
-            'Operating Income': f"${income.get('operatingIncome', 0):,.0f}" if income.get('operatingIncome') else 'N/A'
+            'Revenue': safe_format_number(income.get('revenue'), 'currency', 0),
+            'Net Income': safe_format_number(income.get('netIncome'), 'currency', 0),
+            'EPS': safe_format_number(income.get('eps'), 'currency'),
+            'Operating Income': safe_format_number(income.get('operatingIncome'), 'currency', 0)
         }
     }
 
