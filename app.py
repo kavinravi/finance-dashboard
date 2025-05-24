@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 
 # Machine Learning imports
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 import torch
@@ -44,6 +44,48 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+def calculate_mape(actual, predicted):
+    """Calculate Mean Absolute Percentage Error"""
+    return np.mean(np.abs((actual - predicted) / actual)) * 100
+
+def explain_arima_results():
+    """Return user-friendly explanation of ARIMA results"""
+    return """
+    📊 **Understanding Your ARIMA Results:**
+    
+    • **MAPE (Mean Absolute Percentage Error)**: How far off predictions are on average, as a percentage. 
+      - Under 5%: Excellent accuracy for trading decisions
+      - 5-10%: Good accuracy for portfolio planning  
+      - 10-20%: Fair accuracy for long-term trends
+      - Over 20%: Poor accuracy, use with caution
+    
+    • **R² (R-Squared)**: How well the model explains price movements (0-100%).
+      - Above 80%: Strong predictive power
+      - 60-80%: Moderate predictive power
+      - Below 60%: Weak predictive power
+    
+    • **7-Day Forecast**: Predicted prices for the next week with confidence intervals.
+      The wider the confidence band, the more uncertain the predictions.
+    """
+
+def explain_lstm_results():
+    """Return user-friendly explanation of LSTM results"""
+    return """
+    🧠 **Understanding Your LSTM AI Results:**
+    
+    • **MAPE (Mean Absolute Percentage Error)**: How accurate the AI predictions are, as a percentage.
+      - Under 3%: Excellent for day trading strategies
+      - 3-7%: Good for swing trading decisions
+      - 7-15%: Fair for medium-term planning
+      - Over 15%: Poor accuracy, avoid for short-term decisions
+    
+    • **Next Day Prediction**: AI's best guess for tomorrow's closing price.
+      Consider this alongside your fundamental analysis.
+    
+    • **Training vs Test Performance**: If test MAPE is much higher than training MAPE,
+      the model may not work well on new data (overfitting).
+    """
 
 def validate_ticker_format(ticker):
     """Validate ticker symbol format"""
@@ -288,16 +330,20 @@ def prepare_lstm_data(df, sequence_length=10):
     return X, y, scaler
 
 class LSTMModel(nn.Module):
-    """PyTorch LSTM model"""
-    def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1):
+    """Enhanced PyTorch LSTM model for better stock prediction"""
+    def __init__(self, input_size=1, hidden_size=128, num_layers=3, output_size=1):
         super(LSTMModel, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.2)
-        self.dropout = nn.Dropout(0.2)
-        self.fc1 = nn.Linear(hidden_size, 25)
-        self.fc2 = nn.Linear(25, output_size)
+        # Increased complexity for better predictions
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True, dropout=0.3)
+        self.dropout1 = nn.Dropout(0.3)
+        self.fc1 = nn.Linear(hidden_size, 64)
+        self.dropout2 = nn.Dropout(0.2)
+        self.fc2 = nn.Linear(64, 32)
+        self.dropout3 = nn.Dropout(0.1)
+        self.fc3 = nn.Linear(32, output_size)
         
     def forward(self, x):
         # Initialize hidden state
@@ -307,17 +353,20 @@ class LSTMModel(nn.Module):
         # Forward propagate LSTM
         out, _ = self.lstm(x, (h0, c0))
         
-        # Take the last output
+        # Take the last output and apply multiple dense layers
         out = out[:, -1, :]
-        out = self.dropout(out)
+        out = self.dropout1(out)
         out = torch.relu(self.fc1(out))
-        out = self.fc2(out)
+        out = self.dropout2(out)
+        out = torch.relu(self.fc2(out))
+        out = self.dropout3(out)
+        out = self.fc3(out)
         
         return out
 
 def create_lstm_model(sequence_length):
-    """Create PyTorch LSTM model"""
-    model = LSTMModel(input_size=1, hidden_size=50, num_layers=2, output_size=1)
+    """Create enhanced PyTorch LSTM model"""
+    model = LSTMModel(input_size=1, hidden_size=128, num_layers=3, output_size=1)
     return model
 
 def main():
@@ -509,9 +558,43 @@ def main():
                 model, forecast, conf_int = fit_arima_model(ts_data, order=(p, d, q))
                 
                 if model is not None:
-                    # Model summary
-                    st.subheader("Model Summary")
-                    st.text(str(model.summary()))
+                    # Calculate additional metrics for finance professionals
+                    fitted_values = model.fittedvalues
+                    actual_values = ts_data[1:]  # Skip first value due to differencing
+                    
+                    # Calculate MAPE and R²
+                    mape = calculate_mape(actual_values, fitted_values)
+                    r2 = r2_score(actual_values, fitted_values)
+                    
+                    # Finance-friendly metrics display
+                    st.subheader("📊 Model Performance for Trading Decisions")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric(
+                            "MAPE (Prediction Error)", 
+                            f"{mape:.2f}%",
+                            help="Lower is better. Under 5% is excellent for trading decisions."
+                        )
+                    with col2:
+                        st.metric(
+                            "R² (Predictive Power)", 
+                            f"{r2*100:.1f}%",
+                            help="Higher is better. Above 80% indicates strong predictive power."
+                        )
+                    
+                    # Interpretation for finance professionals
+                    if mape < 5:
+                        st.success("🟢 **Excellent accuracy** - Suitable for short-term trading strategies")
+                    elif mape < 10:
+                        st.info("🟡 **Good accuracy** - Suitable for portfolio planning and medium-term decisions")
+                    elif mape < 20:
+                        st.warning("🟠 **Fair accuracy** - Use for long-term trend analysis only")
+                    else:
+                        st.error("🔴 **Poor accuracy** - Exercise caution, consider fundamental analysis")
+                    
+                    # Model summary (collapsed by default)
+                    with st.expander("📋 Technical Model Details (Advanced Users)"):
+                        st.text(str(model.summary()))
                     
                     # Forecast plot
                     st.subheader("7-Day Forecast")
@@ -546,6 +629,10 @@ def main():
                         'Upper_CI': conf_int.iloc[:, 1]
                     })
                     st.dataframe(forecast_df)
+                    
+                    # User-friendly explanation
+                    with st.expander("❓ How to Interpret These Results"):
+                        st.markdown(explain_arima_results())
     
     with tab4:
         st.header("LSTM Deep Learning Analysis")
@@ -579,18 +666,29 @@ def main():
                     criterion = nn.MSELoss()
                     optimizer = optim.Adam(model.parameters(), lr=0.001)
                     
-                    # Training
+                    # Training with more epochs for better performance
                     model.train()
                     losses = []
-                    epochs = 50
+                    epochs = 150  # Increased from 50 for better learning
+                    
+                    # Progress bar for training
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
                     
                     for epoch in range(epochs):
+                        # Update progress
+                        progress_bar.progress((epoch + 1) / epochs)
+                        status_text.text(f'Training epoch {epoch + 1}/{epochs}...')
                         optimizer.zero_grad()
                         outputs = model(X_train_tensor)
                         loss = criterion(outputs, y_train_tensor)
                         loss.backward()
                         optimizer.step()
                         losses.append(loss.item())
+                    
+                    # Clear progress indicators
+                    progress_bar.empty()
+                    status_text.empty()
                     
                     # Make predictions
                     model.eval()
@@ -604,16 +702,49 @@ def main():
                     y_train_actual = scaler.inverse_transform(y_train.reshape(-1, 1))
                     y_test_actual = scaler.inverse_transform(y_test.reshape(-1, 1))
                     
-                    # Calculate metrics
+                    # Calculate finance-friendly metrics
+                    train_mape = calculate_mape(y_train_actual.flatten(), train_predictions.flatten())
+                    test_mape = calculate_mape(y_test_actual.flatten(), test_predictions.flatten())
                     train_rmse = np.sqrt(mean_squared_error(y_train_actual, train_predictions))
                     test_rmse = np.sqrt(mean_squared_error(y_test_actual, test_predictions))
                     
-                    # Display metrics
+                    # Display finance-friendly metrics
+                    st.subheader("🧠 AI Model Performance for Trading Decisions")
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.metric("Train RMSE", f"${train_rmse:.2f}")
+                        st.metric(
+                            "Training MAPE", 
+                            f"{train_mape:.2f}%",
+                            help="How accurate the AI is on data it learned from. Lower is better."
+                        )
                     with col2:
-                        st.metric("Test RMSE", f"${test_rmse:.2f}")
+                        st.metric(
+                            "Testing MAPE", 
+                            f"{test_mape:.2f}%",
+                            help="How accurate the AI is on new, unseen data. This is the real performance indicator."
+                        )
+                    
+                    # Interpretation for finance professionals
+                    if test_mape < 3:
+                        st.success("🟢 **Excellent AI accuracy** - Suitable for day trading strategies")
+                    elif test_mape < 7:
+                        st.info("🟡 **Good AI accuracy** - Suitable for swing trading decisions")
+                    elif test_mape < 15:
+                        st.warning("🟠 **Fair AI accuracy** - Use for medium-term planning only")
+                    else:
+                        st.error("🔴 **Poor AI accuracy** - Avoid for short-term decisions")
+                    
+                    # Check for overfitting
+                    if test_mape > train_mape * 1.5:
+                        st.warning("⚠️ **Overfitting detected**: AI performs much better on training data than new data. Use predictions cautiously.")
+                    
+                    # Technical metrics (collapsed)
+                    with st.expander("📊 Technical Metrics (Advanced Users)"):
+                        col3, col4 = st.columns(2)
+                        with col3:
+                            st.metric("Train RMSE", f"${train_rmse:.2f}")
+                        with col4:
+                            st.metric("Test RMSE", f"${test_rmse:.2f}")
                     
                     # Plot results
                     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
@@ -649,6 +780,10 @@ def main():
                     next_price = scaler.inverse_transform(next_prediction)[0][0]
                     
                     st.success(f"Predicted next day closing price: ${next_price:.2f}")
+                    
+                    # User-friendly explanation
+                    with st.expander("❓ How to Interpret These AI Results"):
+                        st.markdown(explain_lstm_results())
 
 if __name__ == "__main__":
     main() 
