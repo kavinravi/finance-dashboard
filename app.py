@@ -45,7 +45,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
+@st.cache_data(ttl=300)  # Cache for 5 minutes only
 def load_data():
     """Load and preprocess the SPY data"""
     try:
@@ -236,6 +236,11 @@ def main():
     
     # Sidebar
     st.sidebar.title("Dashboard Controls")
+    
+    # Cache management
+    if st.sidebar.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
     
     # Main content tabs
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"])
