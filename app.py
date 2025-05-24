@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 # Set page config
 st.set_page_config(
-    page_title="SPY Finance Dashboard",
+    page_title="Finance Dashboard",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -340,7 +340,7 @@ def main():
     
     st.sidebar.markdown("---")
     
-    # File upload section
+    # File upload section - always visible
     st.sidebar.subheader("📁 Upload Your Data")
     
     uploaded_file = st.sidebar.file_uploader(
@@ -388,10 +388,10 @@ def main():
                     st.sidebar.error("**Upload Failed**")
                     for error in errors:
                         st.sidebar.error(error)
-                st.sidebar.markdown("**💡 Tips:**")
-                st.sidebar.markdown("- Ensure your CSV has headers: Date, Open, High, Low, Close, Volume")
-                st.sidebar.markdown("- Date format: MM/DD/YYYY or YYYY-MM-DD")
-                st.sidebar.markdown("- Numbers can have quotes or commas (we'll clean them)")
+                    st.sidebar.markdown("**💡 Tips:**")
+                    st.sidebar.markdown("- Ensure your CSV has headers: Date, Open, High, Low, Close, Volume")
+                    st.sidebar.markdown("- Date format: MM/DD/YYYY or YYYY-MM-DD")
+                    st.sidebar.markdown("- Numbers can have quotes or commas (we'll clean them)")
                 
         except Exception as e:
             st.sidebar.error(f"❌ **Error reading file**: {str(e)}")
