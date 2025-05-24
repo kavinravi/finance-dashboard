@@ -296,6 +296,11 @@ def prepare_arima_data(df):
 def fit_arima_model(ts_data, order=(1,1,1)):
     """Fit ARIMA model and make predictions"""
     try:
+        # Ensure we have enough data points
+        if len(ts_data) < max(order) + 10:
+            st.warning("Not enough data points for ARIMA analysis. Need at least 15 data points.")
+            return None, None, None
+        
         model = ARIMA(ts_data, order=order)
         fitted_model = model.fit()
         
@@ -307,6 +312,7 @@ def fit_arima_model(ts_data, order=(1,1,1)):
         return fitted_model, forecast, conf_int
     except Exception as e:
         st.error(f"ARIMA model error: {str(e)}")
+        st.info("Try different ARIMA parameters (p, d, q) or ensure your data has enough observations.")
         return None, None, None
 
 def prepare_lstm_data(df, sequence_length=10):
@@ -566,11 +572,33 @@ def main():
                 if model is not None:
                     # Calculate additional metrics for finance professionals
                     fitted_values = model.fittedvalues
-                    actual_values = ts_data[1:]  # Skip first value due to differencing
                     
-                    # Calculate MAPE and R²
-                    mape = calculate_mape(actual_values, fitted_values)
-                    r2 = r2_score(actual_values, fitted_values)
+                    # Check if we have valid fitted values
+                    if len(fitted_values) == 0:
+                        st.error("ARIMA model produced no fitted values. Try different parameters.")
+                        return
+                    
+                    # Align actual and fitted values to ensure same length
+                    # ARIMA fitted values start from the first valid observation
+                    start_idx = max(0, len(ts_data) - len(fitted_values))
+                    actual_values = ts_data.iloc[start_idx:]
+                    
+                    # Ensure both arrays have exactly the same length
+                    min_len = min(len(actual_values), len(fitted_values))
+                    if min_len <= 0:
+                        st.error("Cannot align actual and fitted values. Try different ARIMA parameters.")
+                        return
+                    
+                    actual_values = actual_values.iloc[-min_len:]
+                    fitted_values = fitted_values[-min_len:]
+                    
+                    # Calculate MAPE and R² with error handling
+                    try:
+                        mape = calculate_mape(actual_values.values, fitted_values)
+                        r2 = r2_score(actual_values.values, fitted_values)
+                    except Exception as e:
+                        st.error(f"Error calculating metrics: {str(e)}")
+                        return
                     
                     # Finance-friendly metrics display
                     st.subheader("📊 Model Performance for Trading Decisions")
