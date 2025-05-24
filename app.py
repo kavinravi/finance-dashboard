@@ -293,14 +293,31 @@ def main():
     with tab3:
         st.header("ARIMA Time Series Analysis")
         
-        # ARIMA parameters
+        st.info("💡 **Recommended starting point**: p=1, d=1, q=1 (selected by default) works well for most stocks including SPY.")
+        
+        # ARIMA parameters with help tooltips
         col1, col2, col3 = st.columns(3)
         with col1:
-            p = st.selectbox("AR (p)", [0, 1, 2, 3], index=1)
+            p = st.selectbox(
+                "AR (p) - AutoRegressive", 
+                [0, 1, 2, 3], 
+                index=1,
+                help="How much yesterday's price influences today's prediction. **p=1**: Good for stable stocks (blue chips, utilities). **p=2**: Better for volatile stocks (tech, growth). **p=3**: For highly unpredictable stocks. Start with p=1 for established companies."
+            )
         with col2:
-            d = st.selectbox("I (d)", [0, 1, 2], index=1)
+            d = st.selectbox(
+                "I (d) - Integration", 
+                [0, 1, 2], 
+                index=1,
+                help="Removes price trends to focus on price changes. **d=1**: Standard for stock prices (recommended). **d=0**: Only for already stable price series. **d=2**: Rarely needed. Keep at d=1 for normal stock analysis."
+            )
         with col3:
-            q = st.selectbox("MA (q)", [0, 1, 2, 3], index=1)
+            q = st.selectbox(
+                "MA (q) - Moving Average", 
+                [0, 1, 2, 3], 
+                index=1,
+                help="How much recent market 'shocks' affect predictions. **q=1**: Good for most stocks, captures immediate reactions. **q=2**: For stocks sensitive to news/events. **q=0**: For very predictable stocks. q=1 works well for SPY and major ETFs."
+            )
         
         if st.button("Run ARIMA Analysis"):
             with st.spinner("Training ARIMA model..."):
@@ -349,7 +366,13 @@ def main():
     with tab4:
         st.header("LSTM Deep Learning Analysis")
         
-        sequence_length = st.slider("Sequence Length", 5, 20, 10)
+        st.info("💡 **Recommended starting point**: Sequence Length = 10 days (selected by default) works well for most stocks.")
+        
+        sequence_length = st.slider(
+            "Sequence Length (days)", 
+            5, 20, 10,
+            help="How many previous trading days the AI model looks at to predict the next day. **5-7 days**: For highly volatile stocks that change quickly. **10-12 days**: Good for most stocks including SPY (captures ~2 weeks). **15-20 days**: For very stable stocks or longer-term patterns. More days = more context but slower predictions."
+        )
         
         if st.button("Run LSTM Analysis"):
             with st.spinner("Training LSTM model..."):
