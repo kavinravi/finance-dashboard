@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Streamlit
+.streamlit/
+
+# MacOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Local development
+.env
+.env.local
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# TensorFlow
+*.h5
+*.hdf5 
