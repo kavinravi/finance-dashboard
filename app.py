@@ -9,6 +9,12 @@ from plotly.subplots import make_subplots
 import warnings
 warnings.filterwarnings('ignore')
 
+# Advanced data collection imports
+import yfinance as yf
+import requests
+from datetime import datetime, timedelta
+import time
+
 # Machine Learning imports
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -387,6 +393,106 @@ def create_lstm_model(sequence_length):
     
     return model, device
 
+def fetch_yfinance_data(ticker, start_date, end_date):
+    """Fetch extended historical data using yfinance"""
+    try:
+        # Create yfinance ticker object
+        stock = yf.Ticker(ticker)
+        
+        # Download historical data
+        df = stock.history(start=start_date, end=end_date)
+        
+        if df.empty:
+            return None, f"No data found for {ticker} in the specified date range."
+        
+        # Reset index to make Date a column
+        df = df.reset_index()
+        
+        # Standardize column names
+        df.columns = [col.title() for col in df.columns]
+        
+        # Add technical indicators
+        df['Daily_Return'] = df['Close'].pct_change()
+        df['High_Low_Pct'] = (df['High'] - df['Low']) / df['Close'] * 100
+        df['Price_Change'] = df['Close'] - df['Open']
+        df['Volatility'] = df['Daily_Return'].rolling(window=5).std()
+        
+        # Add moving averages
+        df['MA_10'] = df['Close'].rolling(window=10).mean()
+        df['MA_20'] = df['Close'].rolling(window=20).mean()
+        df['MA_50'] = df['Close'].rolling(window=50).mean()
+        
+        # Add RSI (Relative Strength Index)
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+        
+        return df, None
+        
+    except Exception as e:
+        return None, f"Error fetching data for {ticker}: {str(e)}"
+
+def validate_date_range(start_date, end_date):
+    """Validate the date range for data collection"""
+    if start_date >= end_date:
+        return False, "Start date must be before end date."
+    
+    if end_date > datetime.now().date():
+        return False, "End date cannot be in the future."
+    
+    # Check if date range is too large (more than 10 years for free APIs)
+    date_diff = (end_date - start_date).days
+    if date_diff > 3650:  # ~10 years
+        return False, "Date range too large. Please select a range within 10 years for optimal performance."
+    
+    return True, ""
+
+def calculate_advanced_indicators(df):
+    """Calculate additional technical indicators"""
+    try:
+        # Bollinger Bands
+        df['BB_Middle'] = df['Close'].rolling(window=20).mean()
+        bb_std = df['Close'].rolling(window=20).std()
+        df['BB_Upper'] = df['BB_Middle'] + (bb_std * 2)
+        df['BB_Lower'] = df['BB_Middle'] - (bb_std * 2)
+        
+        # MACD
+        exp1 = df['Close'].ewm(span=12).mean()
+        exp2 = df['Close'].ewm(span=26).mean()
+        df['MACD'] = exp1 - exp2
+        df['MACD_Signal'] = df['MACD'].ewm(span=9).mean()
+        df['MACD_Histogram'] = df['MACD'] - df['MACD_Signal']
+        
+        return df
+    except Exception as e:
+        st.warning(f"Could not calculate some advanced indicators: {str(e)}")
+        return df
+
+@st.cache_data(ttl=600)  # Cache for 10 minutes
+def get_ticker_info(ticker):
+    """Get basic ticker information using yfinance"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        return {
+            'name': info.get('longName', ticker),
+            'sector': info.get('sector', 'Unknown'),
+            'industry': info.get('industry', 'Unknown'),
+            'market_cap': info.get('marketCap', 'N/A'),
+            'currency': info.get('currency', 'USD')
+        }
+    except:
+        return {
+            'name': ticker,
+            'sector': 'Unknown',
+            'industry': 'Unknown', 
+            'market_cap': 'N/A',
+            'currency': 'USD'
+        }
+
 def main():
     # Initialize session state for uploaded data and UI state
     if 'uploaded_data' not in st.session_state:
@@ -494,7 +600,7 @@ def main():
         return
     
     # Main content tabs (clean interface with fixed widget keys to prevent jumping)
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis", "🔍 Advanced Data"])
     
     with tab1:
         st.header("Data Overview")
@@ -844,6 +950,218 @@ def main():
                     # User-friendly explanation
                     with st.expander("❓ How to Interpret These AI Results"):
                         st.markdown(explain_lstm_results())
+
+    with tab5:
+        st.header("🔍 Advanced Data Collection")
+        
+        st.info("💡 **Professional Analysis**: Collect extended historical data with advanced technical indicators for institutional-quality analysis.")
+        
+        # Advanced data collection interface
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("📊 Data Collection Parameters")
+            
+            # Ticker input with validation
+            advanced_ticker = st.text_input(
+                "Ticker Symbol", 
+                value="AAPL",
+                max_chars=10,
+                help="Enter any valid stock ticker (e.g., AAPL, GOOGL, TSLA, BRK-A)",
+                key="advanced_ticker"
+            ).upper()
+            
+            # Date range selection
+            col_start, col_end = st.columns(2)
+            with col_start:
+                start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now().date() - timedelta(days=365*2),  # Default 2 years
+                    max_value=datetime.now().date(),
+                    help="Select how far back to collect data",
+                    key="advanced_start_date"
+                )
+            
+            with col_end:
+                end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now().date(),
+                    max_value=datetime.now().date(),
+                    help="Select the end date for data collection",
+                    key="advanced_end_date"
+                )
+            
+            # Data source options
+            st.subheader("📡 Data Sources & Indicators")
+            
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                include_technical = st.checkbox("Technical Indicators", value=True, help="RSI, MACD, Bollinger Bands, Moving Averages")
+                include_volume = st.checkbox("Volume Analysis", value=True, help="Volume-based indicators and analysis")
+            
+            with col_opt2:
+                include_advanced = st.checkbox("Advanced Indicators", value=True, help="Additional indicators for professional analysis")
+                export_csv = st.checkbox("Generate CSV Export", value=True, help="Create downloadable CSV file")
+        
+        with col2:
+            st.subheader("ℹ️ Collection Info")
+            
+            # Show ticker info if valid
+            if advanced_ticker and len(advanced_ticker) > 0:
+                with st.spinner("Getting ticker info..."):
+                    ticker_info = get_ticker_info(advanced_ticker)
+                    st.write(f"**Company**: {ticker_info['name']}")
+                    st.write(f"**Sector**: {ticker_info['sector']}")
+                    st.write(f"**Industry**: {ticker_info['industry']}")
+                    if ticker_info['market_cap'] != 'N/A':
+                        try:
+                            market_cap = ticker_info['market_cap']
+                            st.write(f"**Market Cap**: ${market_cap:,.0f}")
+                        except:
+                            st.write(f"**Market Cap**: {ticker_info['market_cap']}")
+            
+            # Show date range info
+            if start_date and end_date:
+                date_range_days = (end_date - start_date).days
+                st.write(f"**Date Range**: {date_range_days} days")
+                st.write(f"**Period**: {date_range_days/365:.1f} years")
+        
+        # Data collection button
+        if st.button("🚀 Collect Advanced Data", key="collect_advanced_data", type="primary"):
+            # Validate inputs
+            ticker_valid, ticker_error = validate_ticker_format(advanced_ticker)
+            if not ticker_valid:
+                st.error(ticker_error)
+                return
+            
+            date_valid, date_error = validate_date_range(start_date, end_date)
+            if not date_valid:
+                st.error(date_error)
+                return
+            
+            # Collect data
+            with st.spinner(f"Collecting data for {advanced_ticker}..."):
+                # Fetch yfinance data
+                yf_data, yf_error = fetch_yfinance_data(advanced_ticker, start_date, end_date)
+                
+                if yf_error:
+                    st.error(f"Data collection failed: {yf_error}")
+                    return
+                
+                if yf_data is None or yf_data.empty:
+                    st.error(f"No data available for {advanced_ticker} in the specified date range.")
+                    return
+                
+                # Add advanced indicators if requested
+                if include_advanced:
+                    yf_data = calculate_advanced_indicators(yf_data)
+                
+                # Display success metrics
+                st.success(f"✅ Successfully collected {len(yf_data)} trading days of data for {advanced_ticker}")
+                
+                # Show data summary
+                col_summary1, col_summary2, col_summary3 = st.columns(3)
+                with col_summary1:
+                    st.metric("Data Points", f"{len(yf_data):,}")
+                with col_summary2:
+                    st.metric("Date Range", f"{(end_date - start_date).days} days")
+                with col_summary3:
+                    st.metric("Indicators", f"{len(yf_data.columns)} columns")
+                
+                # Show recent data
+                st.subheader("📋 Data Preview")
+                st.dataframe(yf_data.head(10), use_container_width=True)
+                
+                # Create visualizations
+                st.subheader("📈 Advanced Visualizations")
+                
+                if include_technical and 'RSI' in yf_data.columns:
+                    # RSI chart
+                    fig_rsi = go.Figure()
+                    fig_rsi.add_trace(go.Scatter(
+                        x=yf_data['Date'], 
+                        y=yf_data['RSI'], 
+                        name='RSI',
+                        line=dict(color='purple')
+                    ))
+                    fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+                    fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+                    fig_rsi.update_layout(
+                        title=f"{advanced_ticker} Relative Strength Index (RSI)",
+                        yaxis_title="RSI",
+                        height=400
+                    )
+                    st.plotly_chart(fig_rsi, use_container_width=True)
+                
+                if include_technical and 'MACD' in yf_data.columns:
+                    # MACD chart
+                    fig_macd = go.Figure()
+                    fig_macd.add_trace(go.Scatter(x=yf_data['Date'], y=yf_data['MACD'], name='MACD', line=dict(color='blue')))
+                    fig_macd.add_trace(go.Scatter(x=yf_data['Date'], y=yf_data['MACD_Signal'], name='Signal', line=dict(color='red')))
+                    fig_macd.add_trace(go.Bar(x=yf_data['Date'], y=yf_data['MACD_Histogram'], name='Histogram', opacity=0.7))
+                    fig_macd.update_layout(
+                        title=f"{advanced_ticker} MACD Analysis",
+                        yaxis_title="MACD",
+                        height=400
+                    )
+                    st.plotly_chart(fig_macd, use_container_width=True)
+                
+                # Advanced statistics
+                st.subheader("📊 Advanced Statistics")
+                stats_col1, stats_col2 = st.columns(2)
+                
+                with stats_col1:
+                    st.write("**Price Statistics:**")
+                    st.write(f"• Maximum Price: ${yf_data['Close'].max():.2f}")
+                    st.write(f"• Minimum Price: ${yf_data['Close'].min():.2f}")
+                    st.write(f"• Average Price: ${yf_data['Close'].mean():.2f}")
+                    st.write(f"• Price Volatility: {yf_data['Daily_Return'].std()*100:.2f}%")
+                
+                with stats_col2:
+                    st.write("**Technical Analysis:**")
+                    if 'RSI' in yf_data.columns:
+                        current_rsi = yf_data['RSI'].iloc[-1]
+                        st.write(f"• Current RSI: {current_rsi:.1f}")
+                        if current_rsi > 70:
+                            st.write("  → 🔴 Potentially Overbought")
+                        elif current_rsi < 30:
+                            st.write("  → 🟢 Potentially Oversold")
+                        else:
+                            st.write("  → 🟡 Neutral Territory")
+                    
+                    if 'MA_50' in yf_data.columns:
+                        current_price = yf_data['Close'].iloc[-1]
+                        ma_50 = yf_data['MA_50'].iloc[-1]
+                        if not pd.isna(ma_50):
+                            trend = "Above" if current_price > ma_50 else "Below"
+                            st.write(f"• Price vs 50-day MA: {trend}")
+                
+                # CSV Export
+                if export_csv:
+                    st.subheader("💾 Data Export")
+                    
+                    # Create CSV
+                    csv_data = yf_data.to_csv(index=False)
+                    
+                    # Download button
+                    st.download_button(
+                        label=f"📥 Download {advanced_ticker} Data (CSV)",
+                        data=csv_data,
+                        file_name=f"{advanced_ticker}_{start_date}_to_{end_date}_advanced.csv",
+                        mime="text/csv",
+                        help="Download the complete dataset with all indicators"
+                    )
+                    
+                    st.info(f"📋 **CSV Contains**: {len(yf_data.columns)} columns including price data, technical indicators, and advanced metrics.")
+                
+                # Option to use this data for analysis
+                st.subheader("🔄 Use This Data for Analysis")
+                if st.button("Load This Data for ARIMA/LSTM Analysis", key="load_advanced_data"):
+                    # Store the advanced data in session state
+                    st.session_state.uploaded_data = yf_data
+                    st.session_state.current_ticker = advanced_ticker
+                    st.success(f"✅ {advanced_ticker} data loaded! You can now use it in the ARIMA and LSTM tabs.")
+                    st.balloons()
 
 if __name__ == "__main__":
     main() 
