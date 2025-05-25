@@ -719,7 +719,7 @@ def main():
     st.warning("⚠️ **KNOWN ISSUE:** Sometimes upon customizing sliders or dropdown boxes the site will snap back to \"Data Overview\". I'm working on a permanent fix.")
     
     # Dynamic header with current ticker
-    st.markdown(f'<h1 class="main-header">📈 {st.session_state.current_ticker} Finance Dashboard</h1>', unsafe_allow_html=True)
+    st.markdown(f'<h1 class="main-header">📈 Finance Dashboard</h1>', unsafe_allow_html=True)
     
     # Sidebar
     st.sidebar.title("Dashboard Controls")
@@ -813,18 +813,6 @@ def main():
         st.error("Failed to load data. Please check the data file and try again.")
         return
     
-    # Debug section (can be removed later)
-    with st.expander("🔧 Debug Info (Session State)"):
-        st.write("**Session State Debug:**")
-        st.write(f"• current_ticker: {st.session_state.current_ticker}")
-        st.write(f"• uploaded_data exists: {st.session_state.uploaded_data is not None}")
-        st.write(f"• use_uploaded_data: {use_uploaded_data}")
-        st.write(f"• df length: {len(df)} data points")
-        if st.session_state.uploaded_data is not None:
-            st.write(f"• uploaded_data length: {len(st.session_state.uploaded_data)} data points")
-        if 'advanced_collected_ticker' in st.session_state:
-            st.write(f"• advanced_collected_ticker: {st.session_state.advanced_collected_ticker}")
-    
     # Main content tabs (clean interface with fixed widget keys to prevent jumping)
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis", "🔍 Advanced Data"])
     
@@ -891,7 +879,12 @@ def main():
         else:
             st.info(f"📊 **Using default data**: SPY ({len(df)} data points)")
             with st.expander("💡 Want to analyze different data?"):
-                st.markdown("Go to the **'🔍 Advanced Data'** tab to collect data for any ticker with extended date ranges and professional indicators.")
+                st.markdown("**3-Step Process to Analyze Any Stock:**")
+                st.markdown("1. Go to the **'🔍 Advanced Data'** tab")
+                st.markdown("2. Enter ticker, select dates, and click **'🚀 Collect Advanced Data'**")
+                st.markdown("3. **Download the CSV** and **upload it** using the sidebar")
+                st.markdown("4. Return here for analysis!")
+                st.markdown("*This simple method is 100% reliable.*")
         
         st.info("💡 **Recommended starting point**: p=1, d=1, q=1 (selected by default) works well for most stocks including SPY.")
         
@@ -1039,7 +1032,12 @@ def main():
         else:
             st.info(f"📊 **Using default data**: SPY ({len(df)} data points)")
             with st.expander("💡 Want to analyze different data?"):
-                st.markdown("Go to the **'🔍 Advanced Data'** tab to collect data for any ticker with extended date ranges and professional indicators.")
+                st.markdown("**3-Step Process to Analyze Any Stock:**")
+                st.markdown("1. Go to the **'🔍 Advanced Data'** tab")
+                st.markdown("2. Enter ticker, select dates, and click **'🚀 Collect Advanced Data'**")
+                st.markdown("3. **Download the CSV** and **upload it** using the sidebar")
+                st.markdown("4. Return here for analysis!")
+                st.markdown("*This simple method is 100% reliable.*")
         
         st.info("💡 **Recommended starting point**: Sequence Length = 10 days (selected by default) works well for most stocks.")
         
@@ -1507,54 +1505,26 @@ def main():
                     )
                     
                     st.info(f"📋 **CSV Contains**: {len(yf_data.columns)} columns including price data, technical indicators, and advanced metrics.")
-                
-                # Option to use this data for analysis
-                st.subheader("🔄 Use This Data for Analysis")
-                
-                # Store data in session state immediately when collected
-                st.session_state.advanced_collected_data = yf_data
-                st.session_state.advanced_collected_ticker = advanced_ticker
-                st.session_state.advanced_collected_fundamentals = fundamental_data
-                
-                if st.button("Load This Data for ARIMA/LSTM Analysis", key="load_advanced_data"):
-                    # Store the advanced data in session state for main analysis
-                    st.session_state.uploaded_data = yf_data
-                    st.session_state.current_ticker = advanced_ticker
-                    st.success(f"✅ {advanced_ticker} data loaded! You can now use it in the ARIMA and LSTM tabs.")
-                    st.info("💡 **Next steps**: Go to the 'ARIMA Analysis' or 'LSTM Analysis' tabs to run your models with this data.")
-                    st.balloons()
-        
-        # Show previously collected data if available (persistent across reruns)
-        if ('advanced_collected_data' in st.session_state and 
-            st.session_state.advanced_collected_data is not None and 
-            not st.session_state.advanced_collected_data.empty):
-            
-            st.markdown("---")
-            st.subheader("📋 Previously Collected Data")
-            
-            prev_data = st.session_state.advanced_collected_data
-            prev_ticker = st.session_state.get('advanced_collected_ticker', 'Unknown')
-            
-            col_prev1, col_prev2, col_prev3 = st.columns(3)
-            with col_prev1:
-                st.metric("Ticker", prev_ticker)
-            with col_prev2:
-                st.metric("Data Points", f"{len(prev_data):,}")
-            with col_prev3:
-                date_range = (prev_data['Date'].max() - prev_data['Date'].min()).days
-                st.metric("Date Range", f"{date_range} days")
-            
-            # Quick data preview
-            with st.expander("👀 Quick Data Preview"):
-                st.dataframe(prev_data.tail(5), use_container_width=True)
-            
-            # Load button for previously collected data
-            if st.button("🔄 Load Previously Collected Data for Analysis", key="load_previous_advanced_data"):
-                st.session_state.uploaded_data = prev_data
-                st.session_state.current_ticker = prev_ticker
-                st.success(f"✅ {prev_ticker} data loaded! You can now use it in the ARIMA and LSTM tabs.")
-                st.info("💡 **Next steps**: Go to the 'ARIMA Analysis' or 'LSTM Analysis' tabs to run your models with this data.")
-                st.balloons()
+                    
+                    # Simple workflow instructions
+                    st.markdown("---")
+                    st.subheader("📈 Use This Data for ARIMA/LSTM Analysis")
+                    st.info("**Simple 3-Step Process:**")
+                    col_step1, col_step2, col_step3 = st.columns(3)
+                    
+                    with col_step1:
+                        st.markdown("**1️⃣ Download CSV**")
+                        st.markdown("Click the download button above")
+                    
+                    with col_step2:
+                        st.markdown("**2️⃣ Upload File**")
+                        st.markdown("Use the sidebar file uploader")
+                    
+                    with col_step3:
+                        st.markdown("**3️⃣ Run Analysis**")
+                        st.markdown("Go to ARIMA/LSTM tabs")
+                    
+                    st.success("✅ **This method is 100% reliable** and avoids any session state issues!")
 
 if __name__ == "__main__":
     main() 
