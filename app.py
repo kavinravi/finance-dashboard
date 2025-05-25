@@ -867,7 +867,18 @@ def main():
     
     
     with tab3:
-        st.header("ARIMA Time Series Analysis")
+        st.header("🔮 ARIMA Time Series Analysis")
+        
+        # Data source indicator
+        if st.session_state.uploaded_data is not None:
+            if st.session_state.current_ticker != "SPY":
+                st.success(f"📊 **Using custom data**: {st.session_state.current_ticker} ({len(df)} data points)")
+            else:
+                st.info(f"📊 **Using uploaded data**: {st.session_state.current_ticker} ({len(df)} data points)")
+        else:
+            st.info(f"📊 **Using default data**: SPY ({len(df)} data points)")
+            with st.expander("💡 Want to analyze different data?"):
+                st.markdown("Go to the **'🔍 Advanced Data'** tab to collect data for any ticker with extended date ranges and professional indicators.")
         
         st.info("💡 **Recommended starting point**: p=1, d=1, q=1 (selected by default) works well for most stocks including SPY.")
         
@@ -1005,6 +1016,17 @@ def main():
     
     with tab4:
         st.header("🧠 LSTM Deep Learning Analysis")
+        
+        # Data source indicator
+        if st.session_state.uploaded_data is not None:
+            if st.session_state.current_ticker != "SPY":
+                st.success(f"📊 **Using custom data**: {st.session_state.current_ticker} ({len(df)} data points)")
+            else:
+                st.info(f"📊 **Using uploaded data**: {st.session_state.current_ticker} ({len(df)} data points)")
+        else:
+            st.info(f"📊 **Using default data**: SPY ({len(df)} data points)")
+            with st.expander("💡 Want to analyze different data?"):
+                st.markdown("Go to the **'🔍 Advanced Data'** tab to collect data for any ticker with extended date ranges and professional indicators.")
         
         st.info("💡 **Recommended starting point**: Sequence Length = 10 days (selected by default) works well for most stocks.")
         
@@ -1475,12 +1497,51 @@ def main():
                 
                 # Option to use this data for analysis
                 st.subheader("🔄 Use This Data for Analysis")
+                
+                # Store data in session state immediately when collected
+                st.session_state.advanced_collected_data = yf_data
+                st.session_state.advanced_collected_ticker = advanced_ticker
+                st.session_state.advanced_collected_fundamentals = fundamental_data
+                
                 if st.button("Load This Data for ARIMA/LSTM Analysis", key="load_advanced_data"):
-                    # Store the advanced data in session state
+                    # Store the advanced data in session state for main analysis
                     st.session_state.uploaded_data = yf_data
                     st.session_state.current_ticker = advanced_ticker
                     st.success(f"✅ {advanced_ticker} data loaded! You can now use it in the ARIMA and LSTM tabs.")
+                    st.info("💡 **Next steps**: Go to the 'ARIMA Analysis' or 'LSTM Analysis' tabs to run your models with this data.")
                     st.balloons()
+        
+        # Show previously collected data if available (persistent across reruns)
+        if ('advanced_collected_data' in st.session_state and 
+            st.session_state.advanced_collected_data is not None and 
+            not st.session_state.advanced_collected_data.empty):
+            
+            st.markdown("---")
+            st.subheader("📋 Previously Collected Data")
+            
+            prev_data = st.session_state.advanced_collected_data
+            prev_ticker = st.session_state.get('advanced_collected_ticker', 'Unknown')
+            
+            col_prev1, col_prev2, col_prev3 = st.columns(3)
+            with col_prev1:
+                st.metric("Ticker", prev_ticker)
+            with col_prev2:
+                st.metric("Data Points", f"{len(prev_data):,}")
+            with col_prev3:
+                date_range = (prev_data['Date'].max() - prev_data['Date'].min()).days
+                st.metric("Date Range", f"{date_range} days")
+            
+            # Quick data preview
+            with st.expander("👀 Quick Data Preview"):
+                st.dataframe(prev_data.tail(5), use_container_width=True)
+            
+            # Load button for previously collected data
+            if st.button("🔄 Load Previously Collected Data for Analysis", key="load_previous_advanced_data"):
+                st.session_state.uploaded_data = prev_data
+                st.session_state.current_ticker = prev_ticker
+                st.success(f"✅ {prev_ticker} data loaded! You can now use it in the ARIMA and LSTM tabs.")
+                st.info("💡 **Next steps**: Go to the 'ARIMA Analysis' or 'LSTM Analysis' tabs to run your models with this data.")
+                st.balloons()
 
 if __name__ == "__main__":
     main() 
