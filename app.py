@@ -1524,7 +1524,7 @@ def main():
                         st.markdown("**3️⃣ Run Analysis**")
                         st.markdown("Go to ARIMA/LSTM tabs")
                     
-                    st.success("✅ **This method is 100% reliable** and avoids any session state issues!")
+                    # st.success("✅ **This method is 100% reliable** and avoids any session state issues!")
 
 if __name__ == "__main__":
     main() 
