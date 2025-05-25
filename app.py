@@ -799,11 +799,12 @@ def main():
     if use_uploaded_data:
         df = load_data(use_uploaded=True, uploaded_data=st.session_state.uploaded_data)
     elif st.session_state.uploaded_data is not None:
-        # Use previously uploaded data
+        # Use previously uploaded data (from Advanced Data or file upload)
         df = load_data(use_uploaded=True, uploaded_data=st.session_state.uploaded_data)
         use_uploaded_data = True
+        # Don't reset current_ticker here - it should already be set correctly
     else:
-        # Use default SPY data
+        # Use default SPY data only if no uploaded data exists
         df = load_data()
         st.session_state.current_ticker = "SPY"
     
@@ -811,6 +812,18 @@ def main():
     if df.empty:
         st.error("Failed to load data. Please check the data file and try again.")
         return
+    
+    # Debug section (can be removed later)
+    with st.expander("🔧 Debug Info (Session State)"):
+        st.write("**Session State Debug:**")
+        st.write(f"• current_ticker: {st.session_state.current_ticker}")
+        st.write(f"• uploaded_data exists: {st.session_state.uploaded_data is not None}")
+        st.write(f"• use_uploaded_data: {use_uploaded_data}")
+        st.write(f"• df length: {len(df)} data points")
+        if st.session_state.uploaded_data is not None:
+            st.write(f"• uploaded_data length: {len(st.session_state.uploaded_data)} data points")
+        if 'advanced_collected_ticker' in st.session_state:
+            st.write(f"• advanced_collected_ticker: {st.session_state.advanced_collected_ticker}")
     
     # Main content tabs (clean interface with fixed widget keys to prevent jumping)
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Data Overview", "📈 Visualizations", "🔮 ARIMA Analysis", "🧠 LSTM Analysis", "🔍 Advanced Data"])
