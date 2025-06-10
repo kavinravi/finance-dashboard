@@ -104,7 +104,7 @@ def validate_ticker_format(ticker):
         return False, "❌ **Ticker required**: Please enter a ticker symbol."
     
     if len(ticker) < 1 or len(ticker) > 6:
-        return False, "❌ **Ticker length**: Ticker must be 1-5 characters (e.g., AAPL, GOOGL)."
+        return False, "❌ **Ticker length**: Ticker must be 1-6 characters (e.g., AAPL, GOOGL)."
     
     if not ticker.isalpha():
         return False, "❌ **Ticker format**: Ticker must contain only letters (A-Z)."
@@ -752,7 +752,7 @@ def main():
         "Ticker Symbol",
         value=st.session_state.current_ticker if st.session_state.current_ticker != "SPY" else "",
         max_chars=6,
-        help="Enter the ticker symbol (e.g., AAPL, NVDA, GOOGL). Must be 1-5 letters only."
+        help="Enter the ticker symbol (e.g., AAPL, NVDA, GOOGL). Must be 1-6 letters only."
     ).upper()
     
     st.sidebar.caption("💡 **Tips:** Keep CSV files under 10MB. Most daily stock data should be much smaller than this.")
