@@ -2,9 +2,9 @@
 
 A comprehensive finance dashboard for stock market analysis featuring interactive visualizations, ARIMA time series forecasting, and PyTorch LSTM deep learning predictions. 
 
-**Current Focus**: SPY (S&P 500 ETF) with complete 2024 calendar year data (253 trading days).
+**Default Data**: SPY (S&P 500 ETF) with complete 2024 calendar year data (253 trading days).
 
-**Coming Soon**: Multi-stock support, sector analysis, portfolio optimization, and extended historical data coverage.
+**Coming Soon**: Multi-stock support, sector analysis, portfolio optimization, and more in-depth analysis (more features or detail).
 
 ## 🚀 Features
 
@@ -18,6 +18,18 @@ A comprehensive finance dashboard for stock market analysis featuring interactiv
 - **Volume Analysis**: Trading volume visualization with color coding
 - **Correlation Heatmap**: Correlation analysis between different stock metrics
 - **Seaborn Pairplot**: Comprehensive pairwise relationship analysis
+
+### 📚 Benchmark Comparison
+- **Custom Ticker Window**: Ability to search custom tickers for comparison
+- **Wide Range of Benchmarks**: Many benchmarks from index funds to fed intereest rates
+- **Custom Date Ranges**: Ability to set a custom date range for benchmark comparison
+- **In-Depth Analysis**: Various metrics used to offer both analysis and recommendations
+
+### 🔍 Advanced Data
+- **Custon Ticker Window**: Ability to search custom tickers for deep analysis
+- **RSI & MACD Chart**: RSI & MACD charts to offer deeper insight than just price
+- **Customizability**: Ability to check which indicators and features will be presented
+- **Exportability**: Option to export the grabbed data as a .csv file 
 
 ### 🔮 ARIMA Analysis
 - Interactive ARIMA model configuration (p, d, q parameters)
@@ -126,6 +138,8 @@ The `SPY.csv` file contains the following columns:
 2. **Explore Visualizations**: Understand price patterns and correlations
 3. **Run ARIMA Analysis**: Get traditional statistical forecasts
 4. **Try LSTM Analysis**: Compare with deep learning predictions
+5. **Try Advanced Data**: Try exploring different, perhaps more volatile, stock options
+6. **Try Benchmark Comparison**: See how any given stock performs when compared to benchmarks
 
 ## 📈 Features Highlights
 
