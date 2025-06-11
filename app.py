@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 import time
 import os
 from dotenv import load_dotenv
+import toml
 
 # Load environment variables for local development
 load_dotenv()
@@ -499,20 +500,9 @@ def get_ticker_info(ticker):
         }
 
 def get_api_keys():
-    """Securely get API keys from environment variables or Streamlit secrets"""
-    try:
-        # Try Streamlit secrets first (for cloud deployment)
-        if hasattr(st, 'secrets'):
-            return {
-                'fmp': st.secrets.get('FMP_API_KEY', ''),
-                'alpha_vantage': st.secrets.get('ALPHA_VANTAGE_API_KEY', ''),
-                'fmp_rate_limit': int(st.secrets.get('FMP_RATE_LIMIT', 60)),
-                'alpha_rate_limit': int(st.secrets.get('ALPHA_VANTAGE_RATE_LIMIT', 5))
-            }
-    except:
-        pass
+    """Securely get API keys from environment variables"""
     
-    # Fall back to environment variables (for local development)
+    # Reads from .env file for local development
     return {
         'fmp': os.getenv('FMP_API_KEY', ''),
         'alpha_vantage': os.getenv('ALPHA_VANTAGE_API_KEY', ''),
