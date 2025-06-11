@@ -500,23 +500,41 @@ def get_ticker_info(ticker):
         }
 
 def get_api_keys():
-    """Securely get API keys from environment variables"""
+    """Securely get API keys from Streamlit secrets or environment variables"""
     
-    # Reads from .env file for local development
-    return {
-        'fmp': os.getenv('FMP_API_KEY', ''),
-        'alpha_vantage': os.getenv('ALPHA_VANTAGE_API_KEY', ''),
-        'fmp_rate_limit': int(os.getenv('FMP_RATE_LIMIT', 60)),
-        'alpha_rate_limit': int(os.getenv('ALPHA_VANTAGE_RATE_LIMIT', 5))
-    }
+    # Try Streamlit secrets first, then environment variables
+    fmp_key = ''
+    alpha_key = ''
+    fmp_rate = 60
+    alpha_rate = 5
+    
+    try:
+        # Try Streamlit secrets
+        fmp_key = st.secrets.get('FMP_API_KEY', '')
+        alpha_key = st.secrets.get('ALPHA_VANTAGE_API_KEY', '')
+        fmp_rate = int(st.secrets.get('FMP_RATE_LIMIT', 60))
+        alpha_rate = int(st.secrets.get('ALPHA_VANTAGE_RATE_LIMIT', 5))
+    except:
+        # Fall back to environment variables
+        fmp_key = os.getenv('FMP_API_KEY', '')
+        alpha_key = os.getenv('ALPHA_VANTAGE_API_KEY', '')
+        fmp_rate = int(os.getenv('FMP_RATE_LIMIT', 60))
+        alpha_rate = int(os.getenv('ALPHA_VANTAGE_RATE_LIMIT', 5))
+    
+    return fmp_key, alpha_key, fmp_rate, alpha_rate
 
 def check_api_keys_available():
     """Check if API keys are properly configured"""
-    keys = get_api_keys()
+    fmp_key, alpha_key, fmp_rate, alpha_rate = get_api_keys()
     return {
-        'fmp_available': bool(keys['fmp']),
-        'alpha_available': bool(keys['alpha_vantage']),
-        'keys': keys
+        'fmp_available': bool(fmp_key),
+        'alpha_available': bool(alpha_key),
+        'keys': {
+            'fmp': fmp_key,
+            'alpha_vantage': alpha_key,
+            'fmp_rate_limit': fmp_rate,
+            'alpha_rate_limit': alpha_rate
+        }
     }
 
 @st.cache_data(ttl=300)  # Cache for 5 minutes to respect rate limits
@@ -1594,13 +1612,13 @@ def main():
                 # Fetch benchmark data - handle special case of Federal Funds Rate
                 if selected_benchmark == 'FED_FUNDS':
                     # Fetch Federal Funds Rate from Alpha Vantage
-                    api_keys = get_api_keys()
-                    if not api_keys['alpha_vantage']:
+                    fmp_key, alpha_key, fmp_rate, alpha_rate = get_api_keys()
+                    if not alpha_key:
                         st.error("🔑 **Alpha Vantage API key required for Federal Funds Rate data**. Please add your API key to `.streamlit/secrets.toml`")
                         st.info("📚 **Get your free Alpha Vantage API key**: https://www.alphavantage.co/support/#api-key")
                         return
                     
-                    benchmark_data, benchmark_error = fetch_fed_funds_rate_alpha_vantage(api_keys['alpha_vantage'], start_date, end_date)
+                    benchmark_data, benchmark_error = fetch_fed_funds_rate_alpha_vantage(alpha_key, start_date, end_date)
                 else:
                     benchmark_data, benchmark_error = fetch_benchmark_data(selected_benchmark, start_date, end_date)
                 
@@ -1849,6 +1867,267 @@ def main():
             # Educational content
             with st.expander("❓ Understanding These Metrics"):
                 st.markdown(explain_comparison_metrics())
+    
+    elif selected_tab == "🔍 Advanced Data":
+        st.header("🔍 Advanced Data Collection")
+        
+        st.info("💡 **Professional Analysis**: Collect extended historical data with advanced technical indicators for institutional-quality analysis.")
+        
+        # Advanced data collection interface
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("📊 Data Collection Parameters")
+            
+            # Ticker input with validation
+            advanced_ticker = st.text_input(
+                "Ticker Symbol", 
+                value="AAPL",
+                max_chars=10,
+                help="Enter any valid stock ticker (e.g., AAPL, GOOGL, TSLA, BRK-A)",
+                key="advanced_ticker"
+            ).upper()
+            
+            # Date range selection
+            col_start, col_end = st.columns(2)
+            with col_start:
+                start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now().date() - timedelta(days=365*2),  # Default 2 years
+                    max_value=datetime.now().date(),
+                    help="Select how far back to collect data",
+                    key="advanced_start_date"
+                )
+            
+            with col_end:
+                end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now().date(),
+                    max_value=datetime.now().date(),
+                    help="Select the end date for data collection",
+                    key="advanced_end_date"
+                )
+            
+            # Data source options
+            st.subheader("📡 Data Sources & Indicators")
+            
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                include_technical = st.checkbox("Technical Indicators", value=True, help="RSI, MACD, Bollinger Bands, Moving Averages")
+                include_volume = st.checkbox("Volume Analysis", value=True, help="Volume-based indicators and analysis")
+            
+            with col_opt2:
+                include_advanced = st.checkbox("Advanced Indicators", value=True, help="Additional indicators for professional analysis")
+                export_csv = st.checkbox("Generate CSV Export", value=True, help="Create downloadable CSV file")
+        
+        with col2:
+            st.subheader("ℹ️ Collection Info")
+            
+            # Show ticker info if valid
+            if advanced_ticker and len(advanced_ticker) > 0:
+                with st.spinner("Getting ticker info..."):
+                    ticker_info = get_ticker_info(advanced_ticker)
+                    st.write(f"**Company**: {ticker_info['name']}")
+                    st.write(f"**Sector**: {ticker_info['sector']}")
+                    st.write(f"**Industry**: {ticker_info['industry']}")
+                    if ticker_info['market_cap'] != 'N/A':
+                        try:
+                            market_cap = ticker_info['market_cap']
+                            st.write(f"**Market Cap**: ${market_cap:,.0f}")
+                        except:
+                            st.write(f"**Market Cap**: {ticker_info['market_cap']}")
+            
+            # Show date range info
+            if start_date and end_date:
+                date_range_days = (end_date - start_date).days
+                st.write(f"**Date Range**: {date_range_days} days")
+                st.write(f"**Period**: {date_range_days/365:.1f} years")
+        
+        # Data collection button
+        if st.button("🚀 Collect Advanced Data", key="collect_advanced_data", type="primary"):
+            # Validate inputs
+            ticker_valid, ticker_error = validate_ticker_format(advanced_ticker)
+            if not ticker_valid:
+                st.error(ticker_error)
+                return
+            
+            date_valid, date_error = validate_date_range(start_date, end_date)
+            if not date_valid:
+                st.error(date_error)
+                return
+            
+            # Collect data
+            with st.spinner(f"Collecting data for {advanced_ticker}..."):
+                # Fetch yfinance data
+                yf_data, yf_error = fetch_yfinance_data(advanced_ticker, start_date, end_date)
+                
+                if yf_error:
+                    st.error(f"Data collection failed: {yf_error}")
+                    return
+                
+                if yf_data is None or yf_data.empty:
+                    st.error(f"No data available for {advanced_ticker} in the specified date range.")
+                    return
+                
+                # Add advanced indicators if requested
+                if include_advanced:
+                    yf_data = calculate_advanced_indicators(yf_data)
+                
+                # Display success metrics
+                st.success(f"✅ Successfully collected {len(yf_data)} trading days of data for {advanced_ticker}")
+                
+                # Show data summary
+                col_summary1, col_summary2, col_summary3 = st.columns(3)
+                with col_summary1:
+                    st.metric("Data Points", f"{len(yf_data):,}")
+                with col_summary2:
+                    st.metric("Date Range", f"{(end_date - start_date).days} days")
+                with col_summary3:
+                    indicators_count = len(yf_data.columns)
+                    st.metric("Total Indicators", f"{indicators_count} sources")
+                
+                # Show recent data
+                st.subheader("📋 Data Preview")
+                st.dataframe(yf_data.head(10), use_container_width=True)
+                
+                # FMP Fundamental Data
+                st.subheader("💰 Fundamental Data (FMP)")
+                fmp_api_key, alpha_api_key, fmp_rate, alpha_rate = get_api_keys()
+                
+                if fmp_api_key:
+                    with st.spinner("Loading fundamental data..."):
+                        fmp_data, fmp_error = fetch_fmp_fundamentals(advanced_ticker, fmp_api_key)
+                        
+                        if fmp_data and not fmp_error:
+                            formatted_data = format_fundamental_data(fmp_data)
+                            
+                            # Display formatted fundamental data
+                            fund_col1, fund_col2 = st.columns(2)
+                            
+                            with fund_col1:
+                                st.markdown("**📊 Company Information**")
+                                for key, value in formatted_data['Company Info'].items():
+                                    st.write(f"• **{key}**: {value}")
+                                
+                                st.markdown("**📊 Valuation Ratios**")
+                                for key, value in formatted_data['Valuation Ratios'].items():
+                                    st.write(f"• **{key}**: {value}")
+                            
+                            with fund_col2:
+                                st.markdown("**💵 Latest Financials**")
+                                for key, value in formatted_data['Latest Financials'].items():
+                                    st.write(f"• **{key}**: {value}")
+                                
+                                st.markdown("**💪 Financial Health**")
+                                for key, value in formatted_data['Financial Health'].items():
+                                    st.write(f"• **{key}**: {value}")
+                        else:
+                            if fmp_error:
+                                st.warning(f"Could not load fundamental data: {fmp_error}")
+                            else:
+                                st.warning("Could not load fundamental data. This may be due to API limits or invalid ticker.")
+                else:
+                    st.info("💡 FMP API key not configured. Fundamental data unavailable.")
+                
+                # Create visualizations
+                st.subheader("📈 Advanced Visualizations")
+                
+                if include_technical and 'RSI' in yf_data.columns:
+                    # RSI chart
+                    fig_rsi = go.Figure()
+                    fig_rsi.add_trace(go.Scatter(
+                        x=yf_data['Date'], 
+                        y=yf_data['RSI'], 
+                        name='RSI',
+                        line=dict(color='purple')
+                    ))
+                    fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+                    fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+                    fig_rsi.update_layout(
+                        title=f"{advanced_ticker} Relative Strength Index (RSI)",
+                        yaxis_title="RSI",
+                        height=400
+                    )
+                    st.plotly_chart(fig_rsi, use_container_width=True)
+                
+                if include_technical and 'MACD' in yf_data.columns:
+                    # MACD chart
+                    fig_macd = go.Figure()
+                    fig_macd.add_trace(go.Scatter(x=yf_data['Date'], y=yf_data['MACD'], name='MACD', line=dict(color='blue')))
+                    fig_macd.add_trace(go.Scatter(x=yf_data['Date'], y=yf_data['MACD_Signal'], name='Signal', line=dict(color='red')))
+                    fig_macd.add_trace(go.Bar(x=yf_data['Date'], y=yf_data['MACD_Histogram'], name='Histogram', opacity=0.7))
+                    fig_macd.update_layout(
+                        title=f"{advanced_ticker} MACD Analysis",
+                        yaxis_title="MACD",
+                        height=400
+                    )
+                    st.plotly_chart(fig_macd, use_container_width=True)
+                
+                # Advanced statistics
+                st.subheader("📊 Advanced Statistics")
+                stats_col1, stats_col2 = st.columns(2)
+                
+                with stats_col1:
+                    st.write("**Price Statistics:**")
+                    st.write(f"• Maximum Price: ${yf_data['Close'].max():.2f}")
+                    st.write(f"• Minimum Price: ${yf_data['Close'].min():.2f}")
+                    st.write(f"• Average Price: ${yf_data['Close'].mean():.2f}")
+                    st.write(f"• Price Volatility: {yf_data['Daily_Return'].std()*100:.2f}%")
+                
+                with stats_col2:
+                    st.write("**Technical Analysis:**")
+                    if 'RSI' in yf_data.columns:
+                        current_rsi = yf_data['RSI'].iloc[-1]
+                        st.write(f"• Current RSI: {current_rsi:.1f}")
+                        if current_rsi > 70:
+                            st.write("  → 🔴 Potentially Overbought")
+                        elif current_rsi < 30:
+                            st.write("  → 🟢 Potentially Oversold")
+                        else:
+                            st.write("  → 🟡 Neutral Territory")
+                    
+                    if 'MA_50' in yf_data.columns:
+                        current_price = yf_data['Close'].iloc[-1]
+                        ma_50 = yf_data['MA_50'].iloc[-1]
+                        if not pd.isna(ma_50):
+                            trend = "Above" if current_price > ma_50 else "Below"
+                            st.write(f"• Price vs 50-day MA: {trend}")
+                
+                # CSV Export
+                if export_csv:
+                    st.subheader("💾 Data Export")
+                    
+                    # Create CSV
+                    csv_data = yf_data.to_csv(index=False)
+                    
+                    # Download button
+                    st.download_button(
+                        label=f"📥 Download {advanced_ticker} Data (CSV)",
+                        data=csv_data,
+                        file_name=f"{advanced_ticker}_{start_date}_to_{end_date}_advanced.csv",
+                        mime="text/csv",
+                        help="Download the complete dataset with all indicators"
+                    )
+                    
+                    st.info(f"📋 **CSV Contains**: {len(yf_data.columns)} columns including price data, technical indicators, and advanced metrics.")
+                    
+                    # Simple workflow instructions
+                    st.markdown("---")
+                    st.subheader("📈 Use This Data for ARIMA/LSTM Analysis")
+                    st.info("**Simple 3-Step Process:**")
+                    col_step1, col_step2, col_step3 = st.columns(3)
+                    
+                    with col_step1:
+                        st.markdown("**1️⃣ Download CSV**")
+                        st.markdown("Click the download button above")
+                    
+                    with col_step2:
+                        st.markdown("**2️⃣ Upload File**")
+                        st.markdown("Use the sidebar file uploader")
+                    
+                    with col_step3:
+                        st.markdown("**3️⃣ Run Analysis**")
+                        st.markdown("Go to ARIMA/LSTM tabs")
     
     elif selected_tab == "🔮 ARIMA Analysis":
         st.header("🔮 ARIMA Analysis")
@@ -2220,19 +2499,43 @@ def main():
                     
                     # Training loss
                     ax1.plot(losses)
-                    ax1.set_title(f'{st.session_state.current_ticker} LSTM Training Loss')
+                    ax1.set_title(f'{lstm_stock_ticker} LSTM Training Loss')
                     ax1.set_xlabel('Epoch')
                     ax1.set_ylabel('Loss')
                     
-                    # Predictions vs actual
-                    train_dates = df['Date'].iloc[sequence_length:sequence_length+len(train_predictions)]
-                    test_dates = df['Date'].iloc[sequence_length+len(train_predictions):sequence_length+len(train_predictions)+len(test_predictions)]
+                    # Predictions vs actual - use analysis_data instead of df
+                    analysis_dates = analysis_data['Date'].reset_index(drop=True)
                     
-                    ax2.plot(df['Date'], df['Close'], label='Actual', alpha=0.7)
-                    ax2.plot(train_dates, train_predictions.flatten(), label='Train Predictions', alpha=0.8)
-                    ax2.plot(test_dates, test_predictions.flatten(), label='Test Predictions', alpha=0.8)
+                    # Ensure we have enough dates for the predictions
+                    available_dates = len(analysis_dates)
+                    train_start_idx = sequence_length
+                    train_end_idx = sequence_length + len(train_predictions)
+                    test_start_idx = sequence_length + len(train_predictions)
+                    test_end_idx = sequence_length + len(train_predictions) + len(test_predictions)
+                    
+                    # Check if we have enough dates
+                    if test_end_idx <= available_dates:
+                        train_dates = analysis_dates.iloc[train_start_idx:train_end_idx]
+                        test_dates = analysis_dates.iloc[test_start_idx:test_end_idx]
+                        
+                        ax2.plot(analysis_dates, analysis_data['Close'], label='Actual', alpha=0.7)
+                        ax2.plot(train_dates, train_predictions.flatten(), label='Train Predictions', alpha=0.8)
+                        ax2.plot(test_dates, test_predictions.flatten(), label='Test Predictions', alpha=0.8)
+                    else:
+                        # Fallback: just plot what we can
+                        max_train_len = min(len(train_predictions), available_dates - sequence_length)
+                        max_test_len = min(len(test_predictions), available_dates - sequence_length - max_train_len)
+                        
+                        if max_train_len > 0:
+                            train_dates = analysis_dates.iloc[sequence_length:sequence_length+max_train_len]
+                            ax2.plot(analysis_dates, analysis_data['Close'], label='Actual', alpha=0.7)
+                            ax2.plot(train_dates, train_predictions[:max_train_len].flatten(), label='Train Predictions', alpha=0.8)
+                        
+                        if max_test_len > 0:
+                            test_dates = analysis_dates.iloc[sequence_length+max_train_len:sequence_length+max_train_len+max_test_len]
+                            ax2.plot(test_dates, test_predictions[:max_test_len].flatten(), label='Test Predictions', alpha=0.8)
                     ax2.legend()
-                    ax2.set_title(f'{st.session_state.current_ticker} LSTM Predictions vs Actual')
+                    ax2.set_title(f'{lstm_stock_ticker} LSTM Predictions vs Actual')
                     ax2.set_xlabel('Date')
                     ax2.set_ylabel('Price ($)')
                     plt.xticks(rotation=45)
