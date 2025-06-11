@@ -1006,6 +1006,141 @@ def create_correlation_rolling_chart(merged_data, stock_ticker, benchmark_ticker
     
     return fig
 
+def calculate_lag_correlation(stock_returns, benchmark_returns, max_lag=10):
+    """Calculate correlation at different lags"""
+    lag_correlations = {}
+    
+    # Ensure we have enough data for the analysis
+    min_data_required = max_lag + 20  # Need at least lag + some buffer
+    if len(stock_returns) < min_data_required or len(benchmark_returns) < min_data_required:
+        return {}
+    
+    for lag in range(-max_lag, max_lag + 1):
+        try:
+            if lag < 0:
+                # Stock leads benchmark (stock today vs benchmark |lag| days later)
+                # Remove last |lag| from stock, remove first |lag| from benchmark
+                abs_lag = abs(lag)
+                stock_subset = stock_returns.iloc[:-abs_lag]
+                benchmark_subset = benchmark_returns.iloc[abs_lag:]
+            elif lag > 0:
+                # Benchmark leads stock (benchmark today vs stock lag days later)  
+                # Remove first lag from stock, remove last lag from benchmark
+                stock_subset = stock_returns.iloc[lag:]
+                benchmark_subset = benchmark_returns.iloc[:-lag]
+            else:
+                # No lag (contemporary correlation)
+                stock_subset = stock_returns
+                benchmark_subset = benchmark_returns
+            
+            # Ensure same length and sufficient data
+            min_len = min(len(stock_subset), len(benchmark_subset))
+            if min_len >= 30:  # Require at least 30 observations for meaningful correlation
+                stock_subset = stock_subset.iloc[:min_len]
+                benchmark_subset = benchmark_subset.iloc[:min_len]
+                
+                correlation = stock_subset.corr(benchmark_subset)
+                if not np.isnan(correlation):
+                    lag_correlations[lag] = correlation
+        except Exception:
+            # Skip this lag if there's any error
+            continue
+    
+    return lag_correlations
+
+def create_lag_correlation_chart(merged_data, stock_ticker, benchmark_ticker, timeframe="medium"):
+    """Create lag correlation analysis chart"""
+    
+    # Define lag ranges for different timeframes
+    lag_ranges = {
+        "short": 5,     # ±5 days
+        "medium": 20,   # ±20 days  
+        "long": 60,     # ±60 days (3 months)
+        "extended": 250 # ±250 days (1 year)
+    }
+    
+    max_lag = lag_ranges.get(timeframe, 60)
+    
+    # Get returns data
+    stock_returns = merged_data['Daily_Return_stock'].dropna()
+    benchmark_returns = merged_data['Daily_Return_benchmark'].dropna()
+    
+    # Calculate lag correlations
+    lag_corrs = calculate_lag_correlation(stock_returns, benchmark_returns, max_lag)
+    
+    if not lag_corrs:
+        return None, "Insufficient data for lag analysis"
+    
+    # Create chart
+    lags = list(lag_corrs.keys())
+    correlations = list(lag_corrs.values())
+    
+    fig = go.Figure()
+    
+    # Color bars based on correlation strength
+    colors = ['darkred' if c < -0.3 else 'red' if c < 0 else 'lightblue' if c < 0.3 else 'blue' if c < 0.7 else 'darkblue' for c in correlations]
+    
+    fig.add_trace(go.Bar(
+        x=lags,
+        y=correlations,
+        marker=dict(color=colors),
+        text=[f'{c:.3f}' for c in correlations],
+        textposition='outside'
+    ))
+    
+    # Add reference lines
+    fig.add_hline(y=0, line_dash="solid", line_color="black", line_width=1)
+    fig.add_hline(y=0.5, line_dash="dash", line_color="gray", annotation_text="Moderate (0.5)")
+    fig.add_hline(y=-0.5, line_dash="dash", line_color="gray", annotation_text="Moderate (-0.5)")
+    
+    # Find optimal lag
+    optimal_lag = max(lag_corrs.items(), key=lambda x: abs(x[1]))
+    
+    fig.update_layout(
+        title=f'{timeframe.title()}-term Lag Correlation: {stock_ticker} vs {benchmark_ticker}<br><sub>Optimal lag: {optimal_lag[0]} days (correlation: {optimal_lag[1]:.3f})</sub>',
+        xaxis_title='Lag (days)',
+        yaxis_title='Correlation Coefficient',
+        height=400,
+        yaxis=dict(range=[-1, 1]),
+        showlegend=False
+    )
+    
+    # Add annotations for interpretation
+    if optimal_lag[0] < 0:
+        interpretation = f"{stock_ticker} leads {benchmark_ticker} by {abs(optimal_lag[0])} days"
+    elif optimal_lag[0] > 0:
+        interpretation = f"{benchmark_ticker} leads {stock_ticker} by {optimal_lag[0]} days"
+    else:
+        interpretation = f"{stock_ticker} and {benchmark_ticker} move contemporaneously"
+    
+    return fig, interpretation
+
+def explain_lag_correlation():
+    """Explain lag correlation analysis"""
+    return """
+    📊 **Lag Correlation Analysis - Professional Market Timing Insights:**
+    
+    **What This Shows:**
+    • How correlation changes when comparing today's stock price with benchmark prices from different days
+    • Reveals lead-lag relationships between securities and markets
+    
+    **Interpretation Guide:**
+    • **Negative Lag**: Stock leads benchmark (stock movements predict future benchmark moves)  
+    • **Positive Lag**: Benchmark leads stock (benchmark movements predict future stock moves)
+    • **Zero Lag**: Contemporary movement (both move together same day)
+    
+    **Professional Applications:**
+    • **Short-term (±5 days)**: Liquidity effects, news propagation, ETF arbitrage
+    • **Medium-term (±20 days)**: Earnings cycles, sector rotation patterns
+    • **Long-term (±60 days)**: Institutional rebalancing, quarterly effects
+    • **Extended (±250 days)**: Fundamental relationships, interest rate cycles, biotech/pharma regulatory delays
+    
+    **Trading Insights:**
+    • **Stock Leads Market**: Potential alpha generation, early market indicator
+    • **Market Leads Stock**: Stock may be suitable for momentum strategies
+    • **High Lag Correlation**: Timing opportunities for entry/exit decisions
+    """
+
 def explain_comparison_metrics():
     """Return explanation of comparison metrics"""
     return """
@@ -1485,527 +1620,235 @@ def main():
                 
                 metrics, merged_data = metrics_result
                 
-                # Display comparison summary
-                st.success(f"✅ **Comparison complete!** Analyzed {metrics['period_days']} overlapping trading days")
+                # Store results in session state to persist across UI interactions
+                st.session_state.benchmark_metrics = metrics
+                st.session_state.benchmark_merged_data = merged_data
                 
-                # Key metrics display
-                st.subheader("📊 Performance Comparison Summary")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    stock_return = metrics['stock_total_return']
-                    delta_color = "normal" if stock_return >= 0 else "inverse"
-                    st.metric(
-                        f"{metrics['stock_ticker']} Total Return", 
-                        f"{stock_return:.2f}%",
-                        delta_color=delta_color
-                    )
-                
-                with col2:
-                    benchmark_return = metrics['benchmark_total_return']
-                    delta_color = "normal" if benchmark_return >= 0 else "inverse"
-                    st.metric(
-                        f"{metrics['benchmark_ticker']} Total Return", 
-                        f"{benchmark_return:.2f}%",
-                        delta_color=delta_color
-                    )
-                
-                with col3:
-                    excess_return = metrics['excess_return']
-                    delta_color = "normal" if excess_return >= 0 else "inverse"
-                    st.metric(
-                        "Excess Return", 
-                        f"{excess_return:.2f}%",
-                        help="How much better (or worse) your stock performed vs benchmark",
-                        delta_color=delta_color
-                    )
-                
-                with col4:
-                    correlation = metrics['correlation']
-                    st.metric(
-                        "Correlation", 
-                        f"{correlation:.3f}",
-                        help="How closely the stock moves with the benchmark (0-1)"
-                    )
-                
-                # Performance interpretation
-                if excess_return > 5:
-                    st.success(f"🟢 **Strong Outperformance**: {metrics['stock_ticker']} significantly outperformed {selected_benchmark}")
-                elif excess_return > 0:
-                    st.info(f"🟡 **Modest Outperformance**: {metrics['stock_ticker']} slightly outperformed {selected_benchmark}")
-                elif excess_return > -5:
-                    st.warning(f"🟠 **Modest Underperformance**: {metrics['stock_ticker']} slightly underperformed {selected_benchmark}")
+        # Display results if they exist in session state (from current or previous run)
+        if 'benchmark_metrics' in st.session_state and 'benchmark_merged_data' in st.session_state:
+            metrics = st.session_state.benchmark_metrics
+            merged_data = st.session_state.benchmark_merged_data
+            
+            # Display comparison summary
+            st.success(f"✅ **Comparison complete!** Analyzed {metrics['period_days']} overlapping trading days")
+            
+            # Key metrics display
+            st.subheader("📊 Performance Comparison Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                stock_return = metrics['stock_total_return']
+                delta_color = "normal" if stock_return >= 0 else "inverse"
+                st.metric(
+                    f"{metrics['stock_ticker']} Total Return", 
+                    f"{stock_return:.2f}%",
+                    delta_color=delta_color
+                )
+            
+            with col2:
+                benchmark_return = metrics['benchmark_total_return']
+                delta_color = "normal" if benchmark_return >= 0 else "inverse"
+                st.metric(
+                    f"{metrics['benchmark_ticker']} Total Return", 
+                    f"{benchmark_return:.2f}%",
+                    delta_color=delta_color
+                )
+            
+            with col3:
+                excess_return = metrics['excess_return']
+                delta_color = "normal" if excess_return >= 0 else "inverse"
+                st.metric(
+                    "Excess Return", 
+                    f"{excess_return:.2f}%",
+                    help="How much better (or worse) your stock performed vs benchmark",
+                    delta_color=delta_color
+                )
+            
+            with col4:
+                correlation = metrics['correlation']
+                st.metric(
+                    "Correlation", 
+                    f"{correlation:.3f}",
+                    help="How closely the stock moves with the benchmark (0-1)"
+                )
+            
+            # Performance interpretation
+            if excess_return > 5:
+                st.success(f"🟢 **Strong Outperformance**: {metrics['stock_ticker']} significantly outperformed {selected_benchmark}")
+            elif excess_return > 0:
+                st.info(f"🟡 **Modest Outperformance**: {metrics['stock_ticker']} slightly outperformed {selected_benchmark}")
+            elif excess_return > -5:
+                st.warning(f"🟠 **Modest Underperformance**: {metrics['stock_ticker']} slightly underperformed {selected_benchmark}")
+            else:
+                st.error(f"🔴 **Significant Underperformance**: {metrics['stock_ticker']} significantly underperformed {selected_benchmark}")
+            
+            # Detailed metrics
+            st.subheader("📈 Detailed Risk & Return Analysis")
+            
+            # Risk metrics
+            col_risk1, col_risk2 = st.columns(2)
+            
+            with col_risk1:
+                st.write("**📊 Return Metrics:**")
+                st.write(f"• **{metrics['stock_ticker']} Volatility**: {metrics['stock_volatility']:.2f}%")
+                st.write(f"• **{metrics['benchmark_ticker']} Volatility**: {metrics['benchmark_volatility']:.2f}%")
+                st.write(f"• **{metrics['stock_ticker']} Sharpe Ratio**: {metrics['stock_sharpe']:.3f}")
+                st.write(f"• **{metrics['benchmark_ticker']} Sharpe Ratio**: {metrics['benchmark_sharpe']:.3f}")
+            
+            with col_risk2:
+                st.write("**⚖️ Risk-Adjusted Metrics:**")
+                st.write(f"• **Beta**: {metrics['beta']:.3f}")
+                if metrics['beta'] > 1.2:
+                    st.write("  → 🔴 High Beta (Amplifies market moves)")
+                elif metrics['beta'] > 0.8:
+                    st.write("  → 🟡 Moderate Beta (Follows market)")
                 else:
-                    st.error(f"🔴 **Significant Underperformance**: {metrics['stock_ticker']} significantly underperformed {selected_benchmark}")
+                    st.write("  → 🟢 Low Beta (Less volatile than market)")
                 
-                # Detailed metrics
-                st.subheader("📈 Detailed Risk & Return Analysis")
-                
-                # Risk metrics
-                col_risk1, col_risk2 = st.columns(2)
-                
-                with col_risk1:
-                    st.write("**📊 Return Metrics:**")
-                    st.write(f"• **{metrics['stock_ticker']} Volatility**: {metrics['stock_volatility']:.2f}%")
-                    st.write(f"• **{metrics['benchmark_ticker']} Volatility**: {metrics['benchmark_volatility']:.2f}%")
-                    st.write(f"• **{metrics['stock_ticker']} Sharpe Ratio**: {metrics['stock_sharpe']:.3f}")
-                    st.write(f"• **{metrics['benchmark_ticker']} Sharpe Ratio**: {metrics['benchmark_sharpe']:.3f}")
-                
-                with col_risk2:
-                    st.write("**⚖️ Risk-Adjusted Metrics:**")
-                    st.write(f"• **Beta**: {metrics['beta']:.3f}")
-                    if metrics['beta'] > 1.2:
-                        st.write("  → 🔴 High Beta (Amplifies market moves)")
-                    elif metrics['beta'] > 0.8:
-                        st.write("  → 🟡 Moderate Beta (Follows market)")
-                    else:
-                        st.write("  → 🟢 Low Beta (Less volatile than market)")
-                    
-                    st.write(f"• **Alpha**: {metrics['alpha']:.2f}%")
-                    if metrics['alpha'] > 2:
-                        st.write("  → 🟢 Positive Alpha (Excess returns)")
-                    elif metrics['alpha'] > -2:
-                        st.write("  → 🟡 Neutral Alpha")
-                    else:
-                        st.write("  → 🔴 Negative Alpha (Underperforming)")
-                
-                # Drawdown analysis
-                st.write("**📉 Maximum Drawdown Analysis:**")
-                st.write(f"• **{metrics['stock_ticker']} Max Drawdown**: {metrics['stock_max_drawdown']:.2f}%")
-                st.write(f"• **{metrics['benchmark_ticker']} Max Drawdown**: {metrics['benchmark_max_drawdown']:.2f}%")
-                
-                # Visualizations
-                st.subheader("📈 Comparison Charts")
-                
-                # Percentage change chart (no scaling needed)
-                st.subheader("📊 Percentage Change Comparison")
-                pct_change_chart = create_percentage_change_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
-                st.plotly_chart(pct_change_chart, use_container_width=True)
-                
-                # Overlaid price history chart
-                st.subheader("💰 Price History Overlay")
-                overlaid_chart = create_overlaid_price_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
-                st.plotly_chart(overlaid_chart, use_container_width=True)
-                
-                # Normalized performance chart
-                st.subheader("📊 Normalized Performance (Base 100)")
-                comparison_fig = create_comparison_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
-                st.plotly_chart(comparison_fig, use_container_width=True)
-                
-                # Rolling returns comparison
-                returns_fig = create_returns_comparison_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
-                st.plotly_chart(returns_fig, use_container_width=True)
-                
-                # Rolling correlation
-                correlation_fig = create_correlation_rolling_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
-                st.plotly_chart(correlation_fig, use_container_width=True)
-                
-                # Performance summary table
-                st.subheader("📋 Complete Metrics Summary")
-                
-                summary_data = {
-                    'Metric': [
-                        'Total Return (%)',
-                        'Annualized Volatility (%)', 
-                        'Sharpe Ratio',
-                        'Maximum Drawdown (%)',
-                        'Beta',
-                        'Alpha (%)',
-                        'Correlation'
-                    ],
-                    f'{metrics["stock_ticker"]}': [
-                        f"{metrics['stock_total_return']:.2f}",
-                        f"{metrics['stock_volatility']:.2f}",
-                        f"{metrics['stock_sharpe']:.3f}",
-                        f"{metrics['stock_max_drawdown']:.2f}",
-                        f"{metrics['beta']:.3f}",
-                        f"{metrics['alpha']:.2f}",
-                        f"{metrics['correlation']:.3f}"
-                    ],
-                    f'{metrics["benchmark_ticker"]}': [
-                        f"{metrics['benchmark_total_return']:.2f}",
-                        f"{metrics['benchmark_volatility']:.2f}",
-                        f"{metrics['benchmark_sharpe']:.3f}",
-                        f"{metrics['benchmark_max_drawdown']:.2f}",
-                        "1.000",  # Benchmark beta is always 1
-                        "0.00",   # Benchmark alpha is always 0
-                        "1.000"   # Benchmark correlation with itself is 1
-                    ]
+                st.write(f"• **Alpha**: {metrics['alpha']:.2f}%")
+                if metrics['alpha'] > 2:
+                    st.write("  → 🟢 Positive Alpha (Excess returns)")
+                elif metrics['alpha'] > -2:
+                    st.write("  → 🟡 Neutral Alpha")
+                else:
+                    st.write("  → 🔴 Negative Alpha (Underperforming)")
+            
+            # Drawdown analysis
+            st.write("**📉 Maximum Drawdown Analysis:**")
+            st.write(f"• **{metrics['stock_ticker']} Max Drawdown**: {metrics['stock_max_drawdown']:.2f}%")
+            st.write(f"• **{metrics['benchmark_ticker']} Max Drawdown**: {metrics['benchmark_max_drawdown']:.2f}%")
+            
+            # Visualizations
+            st.subheader("📈 Comparison Charts")
+            
+            # Percentage change chart (no scaling needed)
+            st.subheader("📊 Percentage Change Comparison")
+            pct_change_chart = create_percentage_change_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
+            st.plotly_chart(pct_change_chart, use_container_width=True)
+            
+            # Overlaid price history chart
+            st.subheader("💰 Price History Overlay")
+            overlaid_chart = create_overlaid_price_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
+            st.plotly_chart(overlaid_chart, use_container_width=True)
+            
+            # Normalized performance chart
+            st.subheader("📊 Normalized Performance (Base 100)")
+            comparison_fig = create_comparison_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
+            st.plotly_chart(comparison_fig, use_container_width=True)
+            
+            # Rolling returns comparison
+            returns_fig = create_returns_comparison_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
+            st.plotly_chart(returns_fig, use_container_width=True)
+            
+            # Rolling correlation
+            correlation_fig = create_correlation_rolling_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'])
+            st.plotly_chart(correlation_fig, use_container_width=True)
+            
+                        # Performance summary table
+            st.subheader("📋 Complete Metrics Summary")
+            
+            summary_data = {
+                'Metric': [
+                    'Total Return (%)',
+                    'Annualized Volatility (%)', 
+                    'Sharpe Ratio',
+                    'Maximum Drawdown (%)',
+                    'Beta',
+                    'Alpha (%)',
+                    'Correlation'
+                ],
+                f'{metrics["stock_ticker"]}': [
+                    f"{metrics['stock_total_return']:.2f}",
+                    f"{metrics['stock_volatility']:.2f}",
+                    f"{metrics['stock_sharpe']:.3f}",
+                    f"{metrics['stock_max_drawdown']:.2f}",
+                    f"{metrics['beta']:.3f}",
+                    f"{metrics['alpha']:.2f}",
+                    f"{metrics['correlation']:.3f}"
+                ],
+                f'{metrics["benchmark_ticker"]}': [
+                    f"{metrics['benchmark_total_return']:.2f}",
+                    f"{metrics['benchmark_volatility']:.2f}",
+                    f"{metrics['benchmark_sharpe']:.3f}",
+                    f"{metrics['benchmark_max_drawdown']:.2f}",
+                    "1.000",  # Benchmark beta is always 1
+                    "0.00",   # Benchmark alpha is always 0
+                    "1.000"   # Benchmark correlation with itself is 1
+                ]
+            }
+            
+            summary_df = pd.DataFrame(summary_data)
+            st.dataframe(summary_df, use_container_width=True)
+            
+            # Lag Correlation Analysis
+            st.subheader("🕒 Lag Correlation Analysis")
+            st.info(explain_lag_correlation())
+            
+            # Use selectbox instead of buttons to avoid page refresh issues
+            lag_timeframe = st.selectbox(
+                "Select Lag Analysis Timeframe:",
+                ["None", "Short-term (±5 days)", "Medium-term (±20 days)", "Long-term (±60 days)", "Extended (±250 days)"],
+                key="lag_timeframe"
+            )
+            
+            if lag_timeframe != "None":
+                timeframe_map = {
+                    "Short-term (±5 days)": "short",
+                    "Medium-term (±20 days)": "medium", 
+                    "Long-term (±60 days)": "long",
+                    "Extended (±250 days)": "extended"
                 }
                 
-                summary_df = pd.DataFrame(summary_data)
-                st.dataframe(summary_df, use_container_width=True)
+                timeframe = timeframe_map[lag_timeframe]
+                lag_fig, interpretation = create_lag_correlation_chart(merged_data, metrics['stock_ticker'], metrics['benchmark_ticker'], timeframe)
                 
-                # Investment insights
-                st.subheader("💡 Investment Insights")
-                
-                insights = []
-                
-                # Beta insights
-                if metrics['beta'] > 1.5:
-                    insights.append(f"🔴 **High Risk Profile**: {metrics['stock_ticker']} is {metrics['beta']:.1f}x more volatile than {selected_benchmark}")
-                elif metrics['beta'] > 1.2:
-                    insights.append(f"🟠 **Moderate-High Risk**: {metrics['stock_ticker']} amplifies market movements by {(metrics['beta']-1)*100:.0f}%")
-                elif metrics['beta'] < 0.8:
-                    insights.append(f"🟢 **Defensive Stock**: {metrics['stock_ticker']} is less volatile than the market (Beta: {metrics['beta']:.2f})")
-                
-                # Alpha insights
-                if metrics['alpha'] > 5:
-                    insights.append(f"🟢 **Strong Alpha Generation**: {metrics['stock_ticker']} generates {metrics['alpha']:.1f}% excess returns annually")
-                elif metrics['alpha'] < -5:
-                    insights.append(f"🔴 **Poor Risk-Adjusted Returns**: {metrics['stock_ticker']} underperforms by {abs(metrics['alpha']):.1f}% annually")
-                
-                # Correlation insights
-                if metrics['correlation'] > 0.9:
-                    insights.append(f"📈 **High Market Correlation**: {metrics['stock_ticker']} closely tracks {selected_benchmark} movements")
-                elif metrics['correlation'] < 0.3:
-                    insights.append(f"📊 **Low Market Correlation**: {metrics['stock_ticker']} provides diversification benefits")
-                
-                # Sharpe ratio insights
-                if metrics['stock_sharpe'] > metrics['benchmark_sharpe'] + 0.2:
-                    insights.append(f"⭐ **Superior Risk-Adjusted Returns**: Better Sharpe ratio than benchmark")
-                elif metrics['stock_sharpe'] < metrics['benchmark_sharpe'] - 0.2:
-                    insights.append(f"⚠️ **Inferior Risk-Adjusted Returns**: Lower Sharpe ratio than benchmark")
-                
-                for insight in insights:
-                    st.write(f"• {insight}")
-                
-                if not insights:
-                    st.write("• 🟡 **Balanced Profile**: Stock shows similar risk-return characteristics to the benchmark")
-                
-                # Educational content
-                with st.expander("❓ Understanding These Metrics"):
-                    st.markdown(explain_comparison_metrics())
-    
-    elif selected_tab == "🔍 Advanced Data":
-        st.header("🔍 Advanced Data Collection")
-        
-        st.info("💡 **Professional Analysis**: Collect extended historical data with advanced technical indicators for institutional-quality analysis.")
-        
-        # Advanced data collection interface
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.subheader("📊 Data Collection Parameters")
+                if lag_fig:
+                    st.plotly_chart(lag_fig, use_container_width=True)
+                    st.success(f"**Insight**: {interpretation}")
+                else:
+                    st.error(f"Insufficient data for {timeframe} lag analysis")
             
-            # Ticker input with validation
-            advanced_ticker = st.text_input(
-                "Ticker Symbol", 
-                value="AAPL",
-                max_chars=10,
-                help="Enter any valid stock ticker (e.g., AAPL, GOOGL, TSLA, BRK-A)",
-                key="advanced_ticker"
-            ).upper()
+            # Investment insights
+            st.subheader("💡 Investment Insights")
             
-            # Date range selection
-            col_start, col_end = st.columns(2)
-            with col_start:
-                start_date = st.date_input(
-                    "Start Date",
-                    value=datetime.now().date() - timedelta(days=365*2),  # Default 2 years
-                    max_value=datetime.now().date(),
-                    help="Select how far back to collect data",
-                    key="advanced_start_date"
-                )
+            insights = []
             
-            with col_end:
-                end_date = st.date_input(
-                    "End Date",
-                    value=datetime.now().date(),
-                    max_value=datetime.now().date(),
-                    help="Select the end date for data collection",
-                    key="advanced_end_date"
-                )
+            # Beta insights
+            if metrics['beta'] > 1.5:
+                insights.append(f"🔴 **High Risk Profile**: {metrics['stock_ticker']} is {metrics['beta']:.1f}x more volatile than {selected_benchmark}")
+            elif metrics['beta'] > 1.2:
+                insights.append(f"🟠 **Moderate-High Risk**: {metrics['stock_ticker']} amplifies market movements by {(metrics['beta']-1)*100:.0f}%")
+            elif metrics['beta'] < 0.8:
+                insights.append(f"🟢 **Defensive Stock**: {metrics['stock_ticker']} is less volatile than the market (Beta: {metrics['beta']:.2f})")
             
-            # Data source options
-            st.subheader("📡 Data Sources & Indicators")
+            # Alpha insights
+            if metrics['alpha'] > 5:
+                insights.append(f"🟢 **Strong Alpha Generation**: {metrics['stock_ticker']} generates {metrics['alpha']:.1f}% excess returns annually")
+            elif metrics['alpha'] < -5:
+                insights.append(f"🔴 **Poor Risk-Adjusted Returns**: {metrics['stock_ticker']} underperforms by {abs(metrics['alpha']):.1f}% annually")
             
-            col_opt1, col_opt2 = st.columns(2)
-            with col_opt1:
-                include_technical = st.checkbox("Technical Indicators", value=True, help="RSI, MACD, Bollinger Bands, Moving Averages")
-                include_volume = st.checkbox("Volume Analysis", value=True, help="Volume-based indicators and analysis")
+            # Correlation insights
+            if metrics['correlation'] > 0.9:
+                insights.append(f"📈 **High Market Correlation**: {metrics['stock_ticker']} closely tracks {selected_benchmark} movements")
+            elif metrics['correlation'] < 0.3:
+                insights.append(f"📊 **Low Market Correlation**: {metrics['stock_ticker']} provides diversification benefits")
             
-            with col_opt2:
-                include_advanced = st.checkbox("Advanced Indicators", value=True, help="Additional indicators for professional analysis")
-                export_csv = st.checkbox("Generate CSV Export", value=True, help="Create downloadable CSV file")
+            # Sharpe ratio insights
+            if metrics['stock_sharpe'] > metrics['benchmark_sharpe'] + 0.2:
+                insights.append(f"⭐ **Superior Risk-Adjusted Returns**: Better Sharpe ratio than benchmark")
+            elif metrics['stock_sharpe'] < metrics['benchmark_sharpe'] - 0.2:
+                insights.append(f"⚠️ **Inferior Risk-Adjusted Returns**: Lower Sharpe ratio than benchmark")
             
-            # Phase 2: API Data Sources
-            st.subheader("🔌 Professional API Data Sources")
+            for insight in insights:
+                st.write(f"• {insight}")
             
-            # Check API key availability
-            api_status = check_api_keys_available()
+            if not insights:
+                st.write("• 🟡 **Balanced Profile**: Stock shows similar risk-return characteristics to the benchmark")
             
-            col_api1, col_api2 = st.columns(2)
-            with col_api1:
-                include_fundamentals = st.checkbox(
-                    "Fundamental Analysis (FMP)", 
-                    value=api_status['fmp_available'],
-                    disabled=not api_status['fmp_available'],
-                    help="P/E ratios, financial statements, company fundamentals"
-                )
-                if not api_status['fmp_available']:
-                    st.caption("⚠️ FMP API key not configured")
-            
-            with col_api2:
-                include_alpha_indicators = st.checkbox(
-                    "Enhanced Indicators (Alpha Vantage)", 
-                    value=api_status['alpha_available'],
-                    disabled=not api_status['alpha_available'],
-                    help="Professional-grade RSI, MACD, and additional indicators"
-                )
-                if not api_status['alpha_available']:
-                    st.caption("⚠️ Alpha Vantage API key not configured")
-        
-        with col2:
-            st.subheader("ℹ️ Collection Info")
-            
-            # API Status Display
-            st.write("**🔌 API Status:**")
-            fmp_status = "🟢 Active" if api_status['fmp_available'] else "🔴 Not configured"
-            alpha_status = "🟢 Active" if api_status['alpha_available'] else "🔴 Not configured"
-            st.write(f"• FMP: {fmp_status}")
-            st.write(f"• Alpha Vantage: {alpha_status}")
-            
-            if not api_status['fmp_available'] or not api_status['alpha_available']:
-                with st.expander("🔧 How to Configure API Keys"):
-                    st.markdown("""
-                    **For Streamlit Cloud:**
-                    1. Go to your app settings
-                    2. Add secrets in the format:
-                    ```
-                    FMP_API_KEY = "your_fmp_key"
-                    ALPHA_VANTAGE_API_KEY = "your_alpha_key"
-                    ```
-                    
-                    **For Local Development:**
-                    1. Create a `.env` file in your project root
-                    2. Add your API keys:
-                    ```
-                    FMP_API_KEY=your_fmp_key
-                    ALPHA_VANTAGE_API_KEY=your_alpha_key
-                    ```
-                    """)
-            
-            st.write("---")
-            
-            # Show ticker info if valid
-            if advanced_ticker and len(advanced_ticker) > 0:
-                with st.spinner("Getting ticker info..."):
-                    ticker_info = get_ticker_info(advanced_ticker)
-                    st.write(f"**Company**: {ticker_info['name']}")
-                    st.write(f"**Sector**: {ticker_info['sector']}")
-                    st.write(f"**Industry**: {ticker_info['industry']}")
-                    if ticker_info['market_cap'] != 'N/A':
-                        try:
-                            market_cap = ticker_info['market_cap']
-                            st.write(f"**Market Cap**: ${market_cap:,.0f}")
-                        except:
-                            st.write(f"**Market Cap**: {ticker_info['market_cap']}")
-            
-            # Show date range info
-            if start_date and end_date:
-                date_range_days = (end_date - start_date).days
-                st.write(f"**Date Range**: {date_range_days} days")
-                st.write(f"**Period**: {date_range_days/365:.1f} years")
-        
-        # Data collection button
-        if st.button("🚀 Collect Advanced Data", key="collect_advanced_data", type="primary"):
-            # Validate inputs
-            ticker_valid, ticker_error = validate_ticker_format(advanced_ticker)
-            if not ticker_valid:
-                st.error(ticker_error)
-                return
-            
-            date_valid, date_error = validate_date_range(start_date, end_date)
-            if not date_valid:
-                st.error(date_error)
-                return
-            
-            # Collect data
-            with st.spinner(f"Collecting data for {advanced_ticker}..."):
-                # Fetch yfinance data
-                yf_data, yf_error = fetch_yfinance_data(advanced_ticker, start_date, end_date)
-                
-                if yf_error:
-                    st.error(f"Data collection failed: {yf_error}")
-                    return
-                
-                if yf_data is None or yf_data.empty:
-                    st.error(f"No data available for {advanced_ticker} in the specified date range.")
-                    return
-                
-                # Add advanced indicators if requested
-                if include_advanced:
-                    yf_data = calculate_advanced_indicators(yf_data)
-                
-                # Phase 2: Collect API data
-                fundamental_data = None
-                alpha_indicators = None
-                
-                if include_fundamentals and api_status['fmp_available']:
-                    with st.spinner("Fetching fundamental data from FMP..."):
-                        fundamental_data, fmp_error = fetch_fmp_fundamentals(advanced_ticker, api_status['keys']['fmp'])
-                        if fmp_error:
-                            st.warning(f"FMP API: {fmp_error}")
-                
-                if include_alpha_indicators and api_status['alpha_available']:
-                    with st.spinner("Fetching enhanced indicators from Alpha Vantage... (this may take ~30 seconds due to rate limits)"):
-                        alpha_indicators, alpha_error = fetch_alpha_vantage_indicators(advanced_ticker, api_status['keys']['alpha_vantage'])
-                        if alpha_error:
-                            st.warning(f"Alpha Vantage API: {alpha_error}")
-                
-                # Display success metrics
-                st.success(f"✅ Successfully collected {len(yf_data)} trading days of data for {advanced_ticker}")
-                
-                # Show data summary
-                col_summary1, col_summary2, col_summary3 = st.columns(3)
-                with col_summary1:
-                    st.metric("Data Points", f"{len(yf_data):,}")
-                with col_summary2:
-                    st.metric("Date Range", f"{(end_date - start_date).days} days")
-                with col_summary3:
-                    indicators_count = len(yf_data.columns)
-                    if fundamental_data:
-                        indicators_count += 4  # Categories of fundamental data
-                    if alpha_indicators:
-                        indicators_count += len(alpha_indicators)
-                    st.metric("Total Indicators", f"{indicators_count} sources")
-                
-                # Phase 2: Display Fundamental Analysis
-                if fundamental_data:
-                    st.subheader("💼 Fundamental Analysis")
-                    formatted_fundamentals = format_fundamental_data(fundamental_data)
-                    
-                    fund_col1, fund_col2 = st.columns(2)
-                    
-                    with fund_col1:
-                        if 'Company Info' in formatted_fundamentals:
-                            st.write("**📊 Company Information:**")
-                            for key, value in formatted_fundamentals['Company Info'].items():
-                                st.write(f"• {key}: {value}")
-                        
-                        if 'Valuation Ratios' in formatted_fundamentals:
-                            st.write("**💰 Valuation Ratios:**")
-                            for key, value in formatted_fundamentals['Valuation Ratios'].items():
-                                st.write(f"• {key}: {value}")
-                    
-                    with fund_col2:
-                        if 'Financial Health' in formatted_fundamentals:
-                            st.write("**🏥 Financial Health:**")
-                            for key, value in formatted_fundamentals['Financial Health'].items():
-                                st.write(f"• {key}: {value}")
-                        
-                        if 'Latest Financials' in formatted_fundamentals:
-                            st.write("**📈 Latest Financials:**")
-                            for key, value in formatted_fundamentals['Latest Financials'].items():
-                                st.write(f"• {key}: {value}")
-                
-                # Show recent data
-                st.subheader("📋 Data Preview")
-                st.dataframe(yf_data.head(10), use_container_width=True)
-                
-                # Create visualizations
-                st.subheader("📈 Advanced Visualizations")
-                
-                if include_technical and 'RSI' in yf_data.columns:
-                    # RSI chart
-                    fig_rsi = go.Figure()
-                    fig_rsi.add_trace(go.Scatter(
-                        x=yf_data['Date'], 
-                        y=yf_data['RSI'], 
-                        name='RSI',
-                        line=dict(color='purple')
-                    ))
-                    fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-                    fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-                    fig_rsi.update_layout(
-                        title=f"{advanced_ticker} Relative Strength Index (RSI)",
-                        yaxis_title="RSI",
-                        height=400
-                    )
-                    st.plotly_chart(fig_rsi, use_container_width=True)
-                
-                if include_technical and 'MACD' in yf_data.columns:
-                    # MACD chart
-                    fig_macd = go.Figure()
-                    fig_macd.add_trace(go.Scatter(x=yf_data['Date'], y=yf_data['MACD'], name='MACD', line=dict(color='blue')))
-                    fig_macd.add_trace(go.Scatter(x=yf_data['Date'], y=yf_data['MACD_Signal'], name='Signal', line=dict(color='red')))
-                    fig_macd.add_trace(go.Bar(x=yf_data['Date'], y=yf_data['MACD_Histogram'], name='Histogram', opacity=0.7))
-                    fig_macd.update_layout(
-                        title=f"{advanced_ticker} MACD Analysis",
-                        yaxis_title="MACD",
-                        height=400
-                    )
-                    st.plotly_chart(fig_macd, use_container_width=True)
-                
-                # Advanced statistics
-                st.subheader("📊 Advanced Statistics")
-                stats_col1, stats_col2 = st.columns(2)
-                
-                with stats_col1:
-                    st.write("**Price Statistics:**")
-                    st.write(f"• Maximum Price: ${yf_data['Close'].max():.2f}")
-                    st.write(f"• Minimum Price: ${yf_data['Close'].min():.2f}")
-                    st.write(f"• Average Price: ${yf_data['Close'].mean():.2f}")
-                    st.write(f"• Price Volatility: {yf_data['Daily_Return'].std()*100:.2f}%")
-                
-                with stats_col2:
-                    st.write("**Technical Analysis:**")
-                    if 'RSI' in yf_data.columns:
-                        current_rsi = yf_data['RSI'].iloc[-1]
-                        st.write(f"• Current RSI: {current_rsi:.1f}")
-                        if current_rsi > 70:
-                            st.write("  → 🔴 Potentially Overbought")
-                        elif current_rsi < 30:
-                            st.write("  → 🟢 Potentially Oversold")
-                        else:
-                            st.write("  → 🟡 Neutral Territory")
-                    
-                    if 'MA_50' in yf_data.columns:
-                        current_price = yf_data['Close'].iloc[-1]
-                        ma_50 = yf_data['MA_50'].iloc[-1]
-                        if not pd.isna(ma_50):
-                            trend = "Above" if current_price > ma_50 else "Below"
-                            st.write(f"• Price vs 50-day MA: {trend}")
-                
-                # CSV Export
-                if export_csv:
-                    st.subheader("💾 Data Export")
-                    
-                    # Create CSV
-                    csv_data = yf_data.to_csv(index=False)
-                    
-                    # Download button
-                    st.download_button(
-                        label=f"📥 Download {advanced_ticker} Data (CSV)",
-                        data=csv_data,
-                        file_name=f"{advanced_ticker}_{start_date}_to_{end_date}_advanced.csv",
-                        mime="text/csv",
-                        help="Download the complete dataset with all indicators"
-                    )
-                    
-                    st.info(f"📋 **CSV Contains**: {len(yf_data.columns)} columns including price data, technical indicators, and advanced metrics.")
-                    
-                    # Simple workflow instructions
-                    st.markdown("---")
-                    st.subheader("📈 Use This Data for ARIMA/LSTM Analysis")
-                    st.info("**Simple 3-Step Process:**")
-                    col_step1, col_step2, col_step3 = st.columns(3)
-                    
-                    with col_step1:
-                        st.markdown("**1️⃣ Download CSV**")
-                        st.markdown("Click the download button above")
-                    
-                    with col_step2:
-                        st.markdown("**2️⃣ Upload File**")
-                        st.markdown("Use the sidebar file uploader")
-                    
-                    with col_step3:
-                        st.markdown("**3️⃣ Run Analysis**")
-                        st.markdown("Go to ARIMA/LSTM tabs")
-                    
-                    # st.success("✅ **This method is 100% reliable** and avoids any session state issues!")
+            # Educational content
+            with st.expander("❓ Understanding These Metrics"):
+                st.markdown(explain_comparison_metrics())
     
     elif selected_tab == "🔮 ARIMA Analysis":
         st.header("🔮 ARIMA Analysis")
