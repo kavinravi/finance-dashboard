@@ -1141,10 +1141,9 @@ def main():
     if 'current_ticker' not in st.session_state:
         st.session_state.current_ticker = "SPY"
     if 'active_tab' not in st.session_state:
-        st.session_state.active_tab = "📊 Data Overview"
+        st.session_state.active_tab = 0  # Default to first tab
     
-    # Known issue warning - prominent but not too intrusive
-    st.warning("⚠️ **KNOWN ISSUE:** Sometimes upon customizing sliders or dropdown boxes the site will snap back to \"Data Overview\". I'm working on a permanent fix.")
+
     
     # Dynamic header with current ticker
     st.markdown(f'<h1 class="main-header">📈 Finance Dashboard</h1>', unsafe_allow_html=True)
@@ -1241,10 +1240,26 @@ def main():
         st.error("Failed to load data. Please check the data file and try again.")
         return
     
-    # Main content tabs (clean interface with fixed widget keys to prevent jumping)
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Data Overview", "📈 Visualizations", "📚 Benchmark Comparison", "🔍 Advanced Data", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"])
+    # Create tab navigation with persistent state
+    tab_options = ["📊 Data Overview", "📈 Visualizations", "📚 Benchmark Comparison", "🔍 Advanced Data", "🔮 ARIMA Analysis", "🧠 LSTM Analysis"]
     
-    with tab1:
+    # Custom tab selector that maintains state
+    selected_tab = st.selectbox(
+        "📋 **Navigate to:**",
+        options=tab_options,
+        index=st.session_state.active_tab,
+        key="tab_selector",
+        help="Select which analysis you want to view. This selection will persist as you interact with the dashboard!"
+    )
+    
+    # Update session state when tab changes
+    if selected_tab:
+        st.session_state.active_tab = tab_options.index(selected_tab)
+    
+    st.markdown("---")  # Visual separator
+    
+    # Display content based on selected tab
+    if selected_tab == "📊 Data Overview":
         st.header("Data Overview")
         
         # Key metrics
@@ -1271,7 +1286,7 @@ def main():
         st.subheader("Statistical Summary")
         st.dataframe(df.describe(), use_container_width=True)
     
-    with tab2:
+    elif selected_tab == "📈 Visualizations":
         st.header("Stock Visualizations")
         
         # Candlestick chart
@@ -1294,7 +1309,7 @@ def main():
         pair_fig = create_pairplot(df, st.session_state.current_ticker)
         st.pyplot(pair_fig)
     
-    with tab3:
+    elif selected_tab == "📚 Benchmark Comparison":
         st.header("📚 Benchmark Comparison")
         
         # Data source indicator
@@ -1359,6 +1374,27 @@ def main():
                 key="comparison_period",
                 help="Select how far back to compare performance. Longer periods give better statistical significance."
             )
+            
+            # Custom date range section
+            st.write("**📅 Or specify a custom date range:**")
+            col_start, col_end = st.columns(2)
+            with col_start:
+                custom_start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now().date() - timedelta(days=365*2),  # Default 2 years
+                    max_value=datetime.now().date(),
+                    help="Select start date for comparison (overrides preset period)",
+                    key="benchmark_custom_start_date"
+                )
+            
+            with col_end:
+                custom_end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now().date(),
+                    max_value=datetime.now().date(),
+                    help="Select end date for comparison (overrides preset period)",
+                    key="benchmark_custom_end_date"
+                )
         
         with col_bench2:
             st.write("**Selected Benchmark:**")
@@ -1380,12 +1416,18 @@ def main():
                 "Max Available": None
             }
             
-            if period_map[comparison_period]:
+            # Show period based on priority
+            if custom_start_date and custom_end_date:
+                st.write(f"**Period**: {custom_start_date} to {custom_end_date}")
+                st.write("📅 *Using custom date range*")
+            elif period_map[comparison_period]:
                 comparison_start = datetime.now().date() - timedelta(days=period_map[comparison_period])
                 comparison_end = datetime.now().date()
                 st.write(f"**Period**: {comparison_start} to {comparison_end}")
+                st.write("📊 *Using preset period*")
             else:
                 st.write("**Period**: Maximum available data")
+                st.write("🔄 *Using all available data*")
         
         if st.button("🔍 Run Benchmark Comparison", key="run_benchmark_comparison", type="primary"):
             # Validate ticker input
@@ -1396,12 +1438,22 @@ def main():
             
             with st.spinner(f"Fetching data for {benchmark_stock_ticker} and {benchmarks[selected_benchmark]}..."):
                 
-                # Determine date range for comparison
-                if period_map[comparison_period]:
+                # Determine date range for comparison - prioritize custom dates
+                if custom_start_date and custom_end_date:
+                    # Custom dates provided - validate them
+                    date_valid, date_error = validate_date_range(custom_start_date, custom_end_date)
+                    if not date_valid:
+                        st.error(f"Invalid custom date range: {date_error}")
+                        return
+                    start_date = custom_start_date
+                    end_date = custom_end_date
+                    st.info(f"📅 **Using custom date range**: {start_date} to {end_date}")
+                elif period_map[comparison_period]:
+                    # Use preset period
                     start_date = datetime.now().date() - timedelta(days=period_map[comparison_period])
                     end_date = datetime.now().date()
                 else:
-                    # Use the stock data date range
+                    # Use the stock data date range for "Max Available"
                     start_date = df['Date'].min().date()
                     end_date = df['Date'].max().date()
                 
@@ -1417,13 +1469,13 @@ def main():
                 # Fetch benchmark data - handle special case of Federal Funds Rate
                 if selected_benchmark == 'FED_FUNDS':
                     # Fetch Federal Funds Rate from Alpha Vantage
-                    fmp_api_key, alpha_vantage_api_key = get_api_keys()
-                    if not alpha_vantage_api_key:
+                    api_keys = get_api_keys()
+                    if not api_keys['alpha_vantage']:
                         st.error("🔑 **Alpha Vantage API key required for Federal Funds Rate data**. Please add your API key to `.streamlit/secrets.toml`")
                         st.info("📚 **Get your free Alpha Vantage API key**: https://www.alphavantage.co/support/#api-key")
                         return
                     
-                    benchmark_data, benchmark_error = fetch_fed_funds_rate_alpha_vantage(alpha_vantage_api_key, start_date, end_date)
+                    benchmark_data, benchmark_error = fetch_fed_funds_rate_alpha_vantage(api_keys['alpha_vantage'], start_date, end_date)
                 else:
                     benchmark_data, benchmark_error = fetch_benchmark_data(selected_benchmark, start_date, end_date)
                 
@@ -1636,7 +1688,7 @@ def main():
                 with st.expander("❓ Understanding These Metrics"):
                     st.markdown(explain_comparison_metrics())
     
-    with tab4:
+    elif selected_tab == "🔍 Advanced Data":
         st.header("🔍 Advanced Data Collection")
         
         st.info("💡 **Professional Analysis**: Collect extended historical data with advanced technical indicators for institutional-quality analysis.")
@@ -1965,7 +2017,7 @@ def main():
                     
                     # st.success("✅ **This method is 100% reliable** and avoids any session state issues!")
     
-    with tab5:
+    elif selected_tab == "🔮 ARIMA Analysis":
         st.header("🔮 ARIMA Analysis")
         
         # Data source indicator
@@ -2119,7 +2171,7 @@ def main():
     
 
 
-    with tab6:
+    elif selected_tab == "🧠 LSTM Analysis":
         st.header("🧠 LSTM Analysis")
         
         # Data source indicator
