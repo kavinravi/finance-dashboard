@@ -54,6 +54,10 @@ const EMPTY: ExtractedFundamentals = {
   meta: { fiscalYear: null, incomePeriodEnd: null, balanceSheetAsOf: null, filingForm: null, filedAt: null },
 };
 
+// Reads only the `us-gaap` and `dei` taxonomies. IFRS filers (many foreign 20-F issuers,
+// taxonomy `ifrs-full`) and filers whose annuals lack an `fp:"FY"` marker yield all-null —
+// the card then degrades to "unavailable" rather than showing wrong numbers. Deliberate
+// MVP scope, not a bug.
 export function extractConcepts(raw: RawCompanyFacts | null): ExtractedFundamentals {
   if (!raw || !raw.facts) return EMPTY;
   const gaap = (tags: string[], unit = "USD") => collectFacts(raw, "us-gaap", tags, unit);
