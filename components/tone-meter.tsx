@@ -9,7 +9,7 @@ export function ToneMeter({ label, score }: { label: ToneLabel; score: number })
         <span>{score}/100 · {toneLabelText(label)}</span>
       </div>
       <div className="mt-1 h-2 w-full rounded bg-neutral-800">
-        <div className="h-2 rounded" style={{ width: `${clamped}%`, background: toneColor(score) }} />
+        <div className="h-2 rounded" style={{ width: `${clamped}%`, background: toneColor(clamped) }} />
       </div>
     </div>
   );
