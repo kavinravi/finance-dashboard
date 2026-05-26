@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { TickerTabs } from "@/components/ticker-tabs";
 
 export default async function TickerLayout({
@@ -8,8 +7,7 @@ export default async function TickerLayout({
   const ticker = symbol.toUpperCase();
   return (
     <main className="mx-auto max-w-4xl px-4 pb-24 pt-10">
-      <Link href="/" className="text-sm text-neutral-500">← Search</Link>
-      <h1 className="mt-4 font-mono text-3xl font-semibold">{ticker}</h1>
+      <h1 className="font-mono text-3xl font-semibold">{ticker}</h1>
       <TickerTabs symbol={ticker} />
       {children}
     </main>

@@ -23,7 +23,7 @@ export function SearchBar() {
   }
 
   return (
-    <div className="w-full max-w-xl">
+    <div className="relative w-full max-w-xl">
       <form onSubmit={run} className="flex gap-2">
         <input
           value={q} onChange={(e) => setQ(e.target.value)}
@@ -35,7 +35,7 @@ export function SearchBar() {
         </button>
       </form>
       {results.length > 0 && (
-        <ul className="mt-2 divide-y divide-neutral-800 rounded bg-neutral-900 ring-1 ring-neutral-800">
+        <ul className="absolute z-20 mt-1 w-full divide-y divide-neutral-800 rounded bg-neutral-900 shadow-lg ring-1 ring-neutral-800">
           {results.slice(0, 8).map((r) => (
             <li key={`${r.symbol}-${r.source}`}>
               <button
