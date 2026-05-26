@@ -66,7 +66,7 @@ Each sub-project gets its own spec → plan → build cycle so we never build on
 
 1. **SP1 — Foundation + Search + Prices + Comparison** *(detailed below; build first)*. Usable slice: search "NVIDIA" → NVDA research page with price chart + AMD comparison.
 2. **SP2 — News + Sentiment + Memo:** Finnhub + Yahoo RSS ingestion, dedupe, Gemini News Tone + source-linked daily memo, news table + tone meter + memo UI. *(detailed in §7 below)*
-3. **SP3 — Fundamentals:** SEC EDGAR CIK mapping + CompanyFacts (minimal concepts), fundamentals card. Adds `cik` to `companies`.
+3. **SP3 — Fundamentals:** SEC EDGAR CIK mapping + CompanyFacts (minimal concepts), fundamentals card. Adds `cik` to `companies`. *(detailed in §8 below)*
 4. **SP4 — Deploy & harden:** Vercel + Neon prod, password gate, provider-health page (reads `provider_state`), cache retention/pruning.
 
 ---
@@ -311,11 +311,105 @@ Page order: existing header + price chart → **memo card** → **news table**. 
 - A missing Gemini/Finnhub key or a provider failure degrades to a clear `unavailable`/empty state without crashing; staleness is shown honestly.
 - Unit + integration + E2E suites pass with Gemini mocked.
 
-## 8. Out of scope (MVP)
+## 8. SP3 detailed design — Fundamentals (SEC EDGAR)
+
+Build third. Usable slice: a stock's ticker page shows a fundamentals card (valuation, profitability, financial health, latest financials) sourced from official SEC filings, cached, with every figure traceable to a 10-K. Verified against live SEC endpoints on 2026-05-25: `company_tickers.json` maps ticker→CIK; `data.sec.gov` requires a contact `User-Agent` (403 without one); `companyfacts` returns current XBRL facts (AAPL: 3.75 MB, 503 us-gaap concepts, all needed concepts present and current to the latest 10-Q).
+
+### 8.1 Scope & what's deferred
+
+**In scope (on the existing `/ticker/[symbol]` page, stocks only):**
+- SEC CIK resolution (ticker→CIK via `company_tickers.json`), cached on the company row.
+- A single `companyfacts` fetch per company (cold cache only), normalized to ~12 concepts and cached as a small snapshot.
+- A **fundamentals card** (client-fetched, mirrors the SP2 memo) showing latest-annual (10-K) figures + the latest balance sheet, with valuation multiples computed from the cached close.
+
+**Deferred (out of SP3):** trailing-twelve-month (TTM) assembly; multi-period history/trends; EV/EBITDA and dividend yield (missing/messy XBRL tags); peer fundamentals comparison; segment data; the deferred paid Sharadar upgrade (§3); retention-pruning of snapshots (SP4).
+
+**Key product decisions (locked during brainstorming):**
+- **Data acquisition = one `companyfacts` call**, not per-concept (`companyconcept`) or `frames`. Simplest code, one round-trip, future-proof; the few-MB payload is a non-issue given a multi-day cache (fetch happens at most once per company per TTL window).
+- **Period basis = latest annual (10-K).** Flow metrics (revenue, net income, EPS, operating income, gross profit) use the most-recent annual (`fp:"FY"`) fact; balance-sheet metrics + shares use the latest available instant (may be a 10-Q — more current, labeled honestly). TTM deferred (avoids fragile 4-quarter assembly).
+- **Metrics = SEC-native + key valuation.** Price-derived Market Cap, P/E, P/S are computed at request time from the already-cached close (no extra provider call) so they never go stale; price-independent ratios derive purely from stored concepts.
+- **Render = client-fetched** `/api/fundamentals/[symbol]`, mirroring the memo card so a cold SEC fetch never blocks page paint.
+
+### 8.2 Data model
+
+Add to `lib/db/schema.ts`:
+
+- **`companies`** gains `cik text` (nullable; 10-digit zero-padded string, e.g. `"0000320193"`). Resolved once and stored; reused thereafter.
+- **`company_fundamentals`** — one current snapshot per company (refresh upserts): `id` uuid PK · `companyId` uuid FK→`companies.id` **unique** · `conceptsJson` jsonb (normalized reported concepts + per-concept period/filing metadata — *not* the raw 3.75 MB blob) · `fiscalYear` int · `incomePeriodEnd` date (FY period end used for flow metrics) · `balanceSheetAsOf` date (latest balance-sheet instant) · `filingForm` text (`10-K`) · `filedAt` date · `source` text (`sec_edgar`) · `fetchedAt` timestamptz default now · `expiresAt` timestamptz (~7d out). **Unique `(companyId)`.**
+- **`provider_state`** gains a `sec` row: high sentinel `dailyLimit` (not hard-gated — SEC has no daily cap, only a ≤10 req/s guideline that hard caching respects); `lastSuccessAt`/`lastErrorAt`/`lastError` feed the SP4 health page.
+
+A migration is generated via `drizzle-kit generate` and applied to Neon (same flow as SP1/SP2).
+
+**`lib/env.ts` addition:** `SEC_USER_AGENT` (`z.string().min(1).optional()`). SEC returns 403 without a contact `User-Agent`; if absent, the feature degrades to `unavailable` (consistent with optional `FINNHUB_API_KEY`/`GEMINI_API_KEY`). `.env.example` documents the format `"AppName contact@email"`.
+
+### 8.3 Provider layer (`lib/providers/sec.ts`, server-side)
+
+- `resolveCik(ticker): Promise<string | null>` — GET `https://www.sec.gov/files/company_tickers.json`, find the entry whose `ticker` matches (case-insensitive), zero-pad `cik_str` to 10 digits. Returns `null` if not found. Sends `User-Agent: env.SEC_USER_AGENT`; records `provider_state(sec)`.
+- `fetchCompanyFacts(cik): Promise<RawCompanyFacts | null>` — GET `https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json` with the User-Agent. Returns parsed JSON or `null` on 403/404/parse error. Records success/error.
+- Both return `null` (never throw to the page) when `SEC_USER_AGENT` is missing.
+
+### 8.4 Pure extraction & derivation (`lib/fundamentals/`)
+
+- **`extract.ts`** — `extractConcepts(raw): FundamentalConcepts`. For each logical metric, walk a **fallback list** of XBRL tags and read the right **unit bucket**:
+  - Revenue: `Revenues` → `RevenueFromContractWithCustomerExcludingAssessedTax` → `SalesRevenueNet` (USD)
+  - Net Income: `NetIncomeLoss` (USD)
+  - EPS: `EarningsPerShareDiluted` → `EarningsPerShareBasic` (USD/shares)
+  - Operating Income: `OperatingIncomeLoss` (USD)
+  - Gross Profit: `GrossProfit` (USD)
+  - Assets / Liabilities / Equity: `Assets`, `Liabilities`, `StockholdersEquity` → `StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest` (USD)
+  - Current Assets / Liabilities: `AssetsCurrent`, `LiabilitiesCurrent` (USD)
+  - Shares outstanding: dei `EntityCommonStockSharesOutstanding` (shares)
+  - **Period selection:** flow metrics → most-recent fact with `fp === "FY"` (annual); instant/balance-sheet metrics + shares → latest fact by `end`. Each chosen fact's `end`/`form`/`filed`/`fy` is recorded for honest labeling. Missing tag → `null`.
+- **`derive.ts`** — `deriveMetrics(concepts, latestClose): FundamentalsView`. Computes: Gross Margin = grossProfit/revenue; ROE = netIncome/equity; ROA = netIncome/assets; Debt/Equity = totalLiabilities/equity; Current Ratio = currentAssets/currentLiabilities; Market Cap = latestClose×shares; P/E = latestClose/dilutedEps; P/S = marketCap/revenue. Every divisor guarded (null/0 → `null`). Pure; no I/O.
+
+Both are pure and unit-tested with a trimmed AAPL `companyfacts` fixture.
+
+### 8.5 Service & API
+
+- **`lib/db/fundamentals.ts`** — `getFundamentalsSnapshot(companyId)`, `upsertFundamentalsSnapshot(...)` (`onConflict (companyId) do update`).
+- **`lib/services/fundamentals-service.ts`** — `getFundamentals(ticker): Promise<{ status: "ok"|"not_applicable"|"unavailable"|"error", view, asOf, source }>`:
+  1. Resolve company (reuse the companies repo / price-service company path). `assetType !== "stock"` → `not_applicable`.
+  2. **Cache-first:** snapshot with `expiresAt > now` → use it.
+  3. Else ensure `cik` (resolve + persist on the company if missing). No CIK → `unavailable`.
+  4. `fetchCompanyFacts` → `extractConcepts` → upsert snapshot (`expiresAt = now + 7d`). SEC/extract failure → `error`; serve a stale snapshot if one exists; never store malformed.
+  5. Read the latest cached close from `price_bars_daily` (no extra provider call) → `deriveMetrics` → return `ok` with the view, `asOf` (period/filing dates), and an EDGAR filings link.
+- **`app/api/fundamentals/[symbol]/route.ts`** — `dynamic="force-dynamic"`, `maxDuration=30`; Zod-validate the symbol (reuse the SP1 ticker regex); returns `{ status, view, asOf, source }` at HTTP 200; catch → `{ status:"error", ... }`. The page never waits on SEC.
+
+### 8.6 UI (`components/fundamentals-card.tsx`, ticker-page addition)
+
+Client component; fetches `/api/fundamentals/[symbol]` on mount. States: `loading` (spinner), `ok`, `not_applicable` ("Fundamentals aren't available for ETFs/indexes"), `unavailable` ("Fundamentals unavailable — SEC data couldn't be fetched"), `error` (retry). `ok` groups (each value shows "N/A" when null):
+- **Valuation:** Market Cap, P/E (FY EPS), P/S
+- **Profitability:** Gross Margin, ROE, ROA, Operating Income
+- **Financial Health:** Current Ratio, Debt/Equity, Assets, Liabilities, Equity
+- **Latest Financials:** Revenue, Net Income, EPS (diluted)
+
+**Trust footer:** "Source: SEC EDGAR · FY{year} {form} filed {date}; balance sheet as of {date}" + a link to the company's EDGAR filings page. Placed after the memo, before recent news. `lib/types.ts` adds `FundamentalConcepts` and `FundamentalsView`.
+
+### 8.7 Error handling — "degrade, never crash"
+
+- Missing `SEC_USER_AGENT` / SEC 403 / timeout / parse failure → `unavailable`; ETF/index → `not_applicable`; individual missing concepts → "N/A" rows only. Page and card never crash.
+- A stale snapshot is served if a fresh fetch fails but an old snapshot exists (honest "as of" labeling). `provider_state(sec)` is updated on every call.
+
+### 8.8 Testing
+
+- **Unit (Vitest):** `extract` (trimmed AAPL fixture → concepts; FY-vs-latest period selection; tag fallback; missing tag → null); `derive` (ratios; divide-by-zero/null → null; margin %, market cap); `resolveCik` (found/not-found vs a small map fixture); route Zod param.
+- **Integration (live Neon, SEC mocked):** cache-first, upsert, 7-day TTL staleness, `not_applicable` for an ETF, `unavailable` with no CIK.
+- **E2E smoke (Playwright):** the fundamentals card transitions loading→rendered with `/api/fundamentals` intercepted by a fixture.
+- **Live verification (standing rule):** real SEC fetch for NVDA + AAPL — confirm figures render sensibly + a screenshot; mocks can't catch real concept-tagging quirks. Lint stays verified in CI (OOM locally).
+
+### 8.9 SP3 acceptance criteria
+
+- A stock ticker (e.g. NVDA, AAPL) shows a fundamentals card with valuation, profitability, financial-health, and latest-financials values sourced from SEC EDGAR, cached after first load.
+- Every figure traces to a filing: the card shows the fiscal year, form, filing date, and balance-sheet date, and links to EDGAR.
+- Market Cap / P/E / P/S are computed from the latest cached close (no extra provider call) and update as prices refresh.
+- An ETF/index (SPY/QQQ) shows `not_applicable`; a missing key/CIK or SEC failure shows `unavailable`; missing individual concepts show "N/A" — no crash.
+- Unit + integration + E2E suites pass with SEC mocked.
+
+## 9. Out of scope (MVP)
 
 Per `plan.md` non-goals: no scraping of paywalled article bodies, no trading execution, no portfolio optimization, no public redistribution of provider data, no delisted-company database, no buy/sell/hold output. Also out of scope for the MVP specifically: local FinBERT, a separate Python service, Alpha Vantage, paid data tiers, and a background scheduler.
 
-## 9. Assumptions
+## 10. Assumptions
 
 - Personal/non-commercial use; app stays private behind a password gate.
 - US-listed securities (FMP free is US-only; SEC is US-only).
