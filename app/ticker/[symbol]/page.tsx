@@ -1,45 +1,44 @@
-import Link from "next/link";
 import { getTickerData } from "@/lib/services/price-service";
-import { getNews } from "@/lib/services/news-service";
 import { ReturnsTable } from "@/components/returns-table";
 import { PriceChart } from "@/components/price-chart";
+import { RsiChart } from "@/components/rsi-chart";
+import { MacdChart } from "@/components/macd-chart";
 import { StalenessBadge } from "@/components/staleness-badge";
-import { NewsTable } from "@/components/news-table";
-import { MemoCard } from "@/components/memo-card";
 import { FundamentalsCard } from "@/components/fundamentals-card";
 import { formatPrice } from "@/lib/formatters";
 
 export const dynamic = "force-dynamic";
 
-export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
+export default async function TickerChartsPage({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
   const data = await getTickerData(symbol.toUpperCase(), "1y");
   const latest = data.bars.at(-1)?.close ?? null;
 
   if (data.bars.length === 0) {
     return (
-      <main className="mx-auto max-w-4xl px-4 pt-16">
-        <Link href="/" className="text-sm text-neutral-500">← Search</Link>
-        <p className="mt-8">Couldn&apos;t resolve <span className="font-mono">{symbol.toUpperCase()}</span>. Try another ticker.</p>
-      </main>
+      <p className="mt-8">
+        Couldn&apos;t resolve <span className="font-mono">{symbol.toUpperCase()}</span>. Try another ticker.
+      </p>
     );
   }
 
-  const news = await getNews(data.ticker);
-
   return (
-    <main className="mx-auto max-w-4xl px-4 pb-24 pt-10">
-      <Link href="/" className="text-sm text-neutral-500">← Search</Link>
-      <div className="mt-4 flex items-baseline justify-between">
-        <div>
-          <h1 className="font-mono text-3xl font-semibold">{data.ticker}</h1>
-          <div className="text-2xl">{formatPrice(latest)}</div>
-        </div>
+    <div className="mt-6">
+      <div className="flex items-baseline justify-between">
+        <div className="text-2xl">{formatPrice(latest)}</div>
         <StalenessBadge stale={data.stale} lastBarDate={data.lastBarDate} source={data.source} />
       </div>
 
       <div className="mt-4"><ReturnsTable returns={data.returns} /></div>
       <div className="mt-6"><PriceChart bars={data.bars} ma20={data.indicators.ma20} ma50={data.indicators.ma50} /></div>
+
+      <h2 className="mt-8 text-sm font-medium text-neutral-400">RSI (14)</h2>
+      <div className="mt-2"><RsiChart bars={data.bars} rsi14={data.indicators.rsi14} /></div>
+
+      <h2 className="mt-8 text-sm font-medium text-neutral-400">MACD (12/26/9)</h2>
+      <div className="mt-2">
+        <MacdChart bars={data.bars} macdLine={data.indicators.macdLine} macdSignal={data.indicators.macdSignal} macdHistogram={data.indicators.macdHistogram} />
+      </div>
 
       <form action="/compare" className="mt-8 flex items-center gap-2">
         <input type="hidden" name="primary" value={data.ticker} />
@@ -50,21 +49,10 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
       </form>
 
       <section className="mt-10">
-        <h2 className="text-sm font-medium text-neutral-400">Daily memo</h2>
-        <p className="mb-2 text-xs text-neutral-600">Research assistant, not investment advice.</p>
-        <MemoCard symbol={data.ticker} />
-      </section>
-
-      <section className="mt-10">
         <h2 className="text-sm font-medium text-neutral-400">Fundamentals</h2>
         <p className="mb-2 text-xs text-neutral-600">From official SEC filings.</p>
         <FundamentalsCard symbol={data.ticker} />
       </section>
-
-      <section className="mt-10">
-        <h2 className="text-sm font-medium text-neutral-400">Recent news</h2>
-        <div className="mt-2"><NewsTable articles={news.articles} /></div>
-      </section>
-    </main>
+    </div>
   );
 }
