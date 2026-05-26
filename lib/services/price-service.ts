@@ -15,7 +15,9 @@ export type TickerData = {
   returns: PeriodReturns;
   indicators: {
     ma10: (number | null)[]; ma20: (number | null)[]; ma50: (number | null)[];
-    rsi14: (number | null)[]; macdHistogram: number[]; volatility5d: (number | null)[];
+    rsi14: (number | null)[];
+    macdLine: number[]; macdSignal: number[]; macdHistogram: number[];
+    volatility5d: (number | null)[];
   };
   source: "cache" | "fmp" | "yahoo";
   lastBarDate: string | null;
@@ -82,13 +84,15 @@ export async function getTickerData(ticker: string, _range: Range = "1y"): Promi
 
   const closes = bars.map((b) => b.close);
   const lastBarDate = bars.at(-1)?.date ?? null;
+  const m = macd(closes);
   return {
     ticker: company.ticker,
     bars,
     returns: computeReturns(bars),
     indicators: {
       ma10: sma(closes, 10), ma20: sma(closes, 20), ma50: sma(closes, 50),
-      rsi14: rsi(closes, 14), macdHistogram: macd(closes).histogram,
+      rsi14: rsi(closes, 14),
+      macdLine: m.macdLine, macdSignal: m.signalLine, macdHistogram: m.histogram,
       volatility5d: rollingVolatility(closes, 5),
     },
     source,
