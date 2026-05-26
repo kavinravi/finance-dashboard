@@ -212,3 +212,7 @@ next-env.d.ts
 # Un-ignore Next.js source directories that conflict with Python packaging patterns
 !lib/
 !lib64/
+*.tsbuildinfo
+/test-results/
+/playwright-report/
+/playwright/.cache/
