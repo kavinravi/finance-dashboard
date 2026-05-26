@@ -70,6 +70,7 @@ Each sub-project gets its own spec → plan → build cycle so we never build on
 4. **SP4 — Deploy & harden:** Vercel deploy (reusing the existing Neon DB), app-level password gate, provider-health page (reads `provider_state`), opportunistic + manual cache pruning, security hardening. *(detailed in §9 below)*
 5. **SP5 — UX refinements (post-deploy):** cap news volume, split the ticker page into tabbed routes (Charts & Fundamentals / News & Memo), add RSI/MACD charts, add a multi-stock watchlist overlay alongside the existing 2-stock compare. *(detailed in §10 below)*
 6. **SP6 — Chart ranges, watchlist tab, global search (post-deploy):** customizable chart date ranges (presets + custom calendar), Watchlist moved into the ticker tab bar, and a persistent global search header. *(detailed in §11 below)*
+7. **SP7 — Navigation, memo polish, tone calibration (post-deploy):** fix the watchlist nav dead-end + reorder it last, color the memo's bullish/bearish sections, and recalibrate + clarify the News Tone (still coverage-tone, never an investment-outlook/advice score). *(detailed in §12 below)*
 
 ---
 
@@ -623,11 +624,51 @@ Second post-deploy refinement round, from continued live-use feedback. Three cha
 - A search bar persists in the header on every page except the homepage (and login); the "← Search" link is gone; searching navigates to the ticker.
 - Unit + E2E pass; live smoke + screenshots confirm the ranges, the tab, and the header search.
 
-## 12. Out of scope (MVP)
+## 12. SP7 detailed design — Navigation, memo polish, tone calibration (post-deploy)
+
+Third post-deploy refinement round, from continued live-use feedback. Four small changes: fix the watchlist navigation dead-end + reorder the tab, color the memo's bullish/bearish sections, and recalibrate + clarify the News Tone. No new providers or tables.
+
+### 12.1 Scope & decisions (locked during brainstorming)
+
+- **Watchlist nav:** the ticker tab bar lives in `app/ticker/[symbol]/layout.tsx` and is ticker-scoped, so the *global* `/watchlist` can't display it — clicking the Watchlist tab stranded the user with no way back to a ticker's Charts/News. Fix: reorder Watchlist **last** (Charts & Fundamentals · News & Memo · Watchlist) and make each watchlist ticker a **link to its ticker page**, so the watchlist is a launch point back into ticker views (the header search + nav remain on every gated page). (The News tab is unaffected — it's under the ticker layout and keeps the tabs.)
+- **Memo colors:** tint the section *headers* only — Bullish emerald, Bearish red, Neutral grey; body text unchanged (tasteful).
+- **News Tone:** **stays News Tone (coverage sentiment), NOT an investment-outlook/advice score** — a hard line (the app never emits buy/sell/hold or forecasts; this also conflicts with the assistant's prohibition on giving investment advice). The "too optimistic" complaint (e.g. META ~50/100 while sliding) is addressed by (a) recalibrating the prompt to be balanced + full-range + not defaulting to neutral, and (b) a UI caption clarifying it's coverage tone, not stock performance. News tone and stock performance legitimately diverge.
+
+### 12.2 Watchlist navigation
+
+- `components/ticker-tabs.tsx`: order → Charts (`base`) · News (`${base}/news`) · Watchlist (`/watchlist`, always inactive style).
+- `components/watchlist-manager.tsx`: render each ticker as a `<Link href={\`/ticker/${t}\`}>` (font-mono, hover underline) alongside the existing remove `×` button.
+
+### 12.3 Memo section colors
+
+- `components/memo-card.tsx`: `Group` gains a `tone: "bullish" | "bearish" | "neutral"` prop driving the header color (`text-emerald-400` / `text-red-400` / `text-neutral-500`). The three call sites pass their tone.
+
+### 12.4 News Tone recalibration + clarify
+
+- `lib/providers/gemini.ts` `buildPrompt`: add a calibration block — the score must use the full 0–100 range and be evidence-driven; do NOT default to neutral/positive; when coverage emphasizes risks, declines, misses, downgrades, litigation, or guidance cuts, score bearish (0–45); reserve 56–100 for genuinely, predominantly favorable coverage. Keep the existing band scale + "coverage tone, not a forecast, not advice." (Tightens calibration; does NOT instruct pessimism.)
+- `components/tone-meter.tsx`: add a one-line caption under the bar: "Tone of recent news coverage — not the stock's performance or a forecast."
+
+### 12.5 Error handling
+
+- No new failure modes. Memo-card states are unchanged; the recalibrated prompt still validates against the same Zod schema (one retry → `unavailable`/`error`, never store malformed). A watchlist link to a non-resolving ticker falls through to the existing "couldn't resolve" ticker page.
+
+### 12.6 Testing
+
+- **E2E (Playwright, gated):** the watchlist ticker is now a link to `/ticker/{symbol}` (update the prior chip selector — it's an `<a>`, not a bare span) and navigates there; the ticker tab order is Charts · News · Watchlist (Watchlist last).
+- **Live + screenshots:** a live **META** (plus one more ticker) memo to confirm the recalibrated News Tone reads sensibly (not anchored at ~50 for clearly-negative coverage) and that the Bullish/Bearish headers are green/red; clicking a watchlist ticker opens its page with the tabs present.
+
+### 12.7 SP7 acceptance criteria
+
+- The ticker tabs read Charts & Fundamentals · News & Memo · Watchlist; from `/watchlist`, clicking a ticker opens its page (no dead-end).
+- The memo's Bullish/Bearish section headers are green/red; the rest stays readable.
+- The News Tone prompt uses the full range and isn't anchored at neutral; the tone meter carries a caption clarifying it's coverage tone, not performance/forecast; no buy/sell/hold or outlook framing appears anywhere.
+- E2E passes; a live memo + screenshots confirm the tone calibration and the colored sections.
+
+## 13. Out of scope (MVP)
 
 Per `plan.md` non-goals: no scraping of paywalled article bodies, no trading execution, no portfolio optimization, no public redistribution of provider data, no delisted-company database, no buy/sell/hold output. Also out of scope for the MVP specifically: local FinBERT, a separate Python service, Alpha Vantage, paid data tiers, and a background scheduler.
 
-## 13. Assumptions
+## 14. Assumptions
 
 - Personal/non-commercial use; app stays private behind a password gate.
 - US-listed securities (FMP free is US-only; SEC is US-only).
