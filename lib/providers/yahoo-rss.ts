@@ -9,6 +9,12 @@ function stripHtml(s: string): string {
   return s.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 }
 
+function parsePubDate(v: unknown): Date {
+  if (v == null) return new Date();
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
 export function parseYahooRss(xml: string): NewsArticle[] {
   let doc: any;
   try { doc = parser.parse(xml); } catch { return []; }
@@ -24,7 +30,7 @@ export function parseYahooRss(xml: string): NewsArticle[] {
         url: String(it.link),
         title: stripHtml(String(it.title)),
         summary: summary === "" ? null : summary,
-        publishedAt: it.pubDate ? new Date(String(it.pubDate)) : new Date(),
+        publishedAt: parsePubDate(it.pubDate),
         imageUrl: null,
         related: null,
       };

@@ -25,4 +25,13 @@ describe("parseYahooRss", () => {
     expect(parseYahooRss("<rss><channel></channel></rss>")).toEqual([]);
     expect(parseYahooRss("not xml")).toEqual([]);
   });
+
+  it("falls back to a valid date when pubDate is unparseable", () => {
+    const bad = `<rss version="2.0"><channel>
+      <item><title>Bad date</title><link>https://ex.com/x</link><pubDate>not-a-date</pubDate></item>
+    </channel></rss>`;
+    const out = parseYahooRss(bad);
+    expect(out).toHaveLength(1);
+    expect(isNaN(out[0].publishedAt.getTime())).toBe(false);
+  });
 });
