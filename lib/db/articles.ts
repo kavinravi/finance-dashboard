@@ -21,10 +21,11 @@ export async function upsertArticles(companyId: string, items: NewsArticle[]): P
   }
 }
 
-export async function getRecentArticles(companyId: string, sinceIso: string): Promise<ArticleRow[]> {
+export async function getRecentArticles(companyId: string, sinceIso: string, limit = 10): Promise<ArticleRow[]> {
   return db.select().from(articles)
     .where(and(eq(articles.companyId, companyId), gte(articles.publishedAt, new Date(sinceIso))))
-    .orderBy(desc(articles.publishedAt));
+    .orderBy(desc(articles.publishedAt))
+    .limit(limit);
 }
 
 export async function newestArticleCreatedAt(companyId: string): Promise<Date | null> {
