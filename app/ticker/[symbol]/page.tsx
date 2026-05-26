@@ -12,7 +12,6 @@ export const dynamic = "force-dynamic";
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
   const data = await getTickerData(symbol.toUpperCase(), "1y");
-  const news = await getNews(data.ticker);
   const latest = data.bars.at(-1)?.close ?? null;
 
   if (data.bars.length === 0) {
@@ -23,6 +22,8 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
       </main>
     );
   }
+
+  const news = await getNews(data.ticker);
 
   return (
     <main className="mx-auto max-w-4xl px-4 pb-24 pt-10">
