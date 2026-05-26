@@ -56,3 +56,13 @@ test("charts tab shows fundamentals; news tab shows the memo (intercepted)", asy
   await expect(page.getByText(/News Tone/).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent news" })).toBeVisible();
 });
+
+test("watchlist add then remove updates the chips", async ({ page }) => {
+  await page.goto("/watchlist");
+  await page.getByPlaceholder(/Add ticker/i).fill("ZZ");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.locator("span.font-mono", { hasText: /^ZZ$/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Remove ZZ" }).click();
+  await expect(page.locator("span.font-mono", { hasText: /^ZZ$/ })).toHaveCount(0);
+});
