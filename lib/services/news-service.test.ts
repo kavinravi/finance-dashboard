@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
   getCompanyByTicker, upsertArticles, getRecentArticles, newestArticleCreatedAt,
-  finnhubNews, yahooRssNews,
+  finnhubNews, yahooRssNews, pruneExpiredForCompany,
 } = vi.hoisted(() => ({
   getCompanyByTicker: vi.fn(),
   upsertArticles: vi.fn(),
@@ -10,10 +10,11 @@ const {
   newestArticleCreatedAt: vi.fn(),
   finnhubNews: vi.fn(),
   yahooRssNews: vi.fn(),
+  pruneExpiredForCompany: vi.fn(),
 }));
 
 vi.mock("@/lib/db/companies", () => ({ getCompanyByTicker }));
-vi.mock("@/lib/db/articles", () => ({ upsertArticles, getRecentArticles, newestArticleCreatedAt }));
+vi.mock("@/lib/db/articles", () => ({ upsertArticles, getRecentArticles, newestArticleCreatedAt, pruneExpiredForCompany }));
 vi.mock("@/lib/providers/finnhub", () => ({ finnhub: { companyNews: finnhubNews } }));
 vi.mock("@/lib/providers/yahoo-rss", () => ({ yahooRss: { companyNews: yahooRssNews } }));
 
@@ -26,12 +27,13 @@ const article = (url: string, when: string) => ({
 });
 
 beforeEach(() => {
-  [getCompanyByTicker, upsertArticles, getRecentArticles, newestArticleCreatedAt, finnhubNews, yahooRssNews]
+  [getCompanyByTicker, upsertArticles, getRecentArticles, newestArticleCreatedAt, finnhubNews, yahooRssNews, pruneExpiredForCompany]
     .forEach((m) => m.mockReset());
   getCompanyByTicker.mockResolvedValue(company);
   getRecentArticles.mockResolvedValue([]);
   finnhubNews.mockResolvedValue([]);
   yahooRssNews.mockResolvedValue([]);
+  pruneExpiredForCompany.mockResolvedValue(0);
 });
 
 describe("getNews", () => {
