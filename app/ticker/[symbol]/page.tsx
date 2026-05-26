@@ -1,8 +1,6 @@
 import { getTickerData } from "@/lib/services/price-service";
 import { ReturnsTable } from "@/components/returns-table";
-import { PriceChart } from "@/components/price-chart";
-import { RsiChart } from "@/components/rsi-chart";
-import { MacdChart } from "@/components/macd-chart";
+import { TickerCharts } from "@/components/ticker-charts";
 import { StalenessBadge } from "@/components/staleness-badge";
 import { FundamentalsCard } from "@/components/fundamentals-card";
 import { formatPrice } from "@/lib/formatters";
@@ -30,14 +28,15 @@ export default async function TickerChartsPage({ params }: { params: Promise<{ s
       </div>
 
       <div className="mt-4"><ReturnsTable returns={data.returns} /></div>
-      <div className="mt-6"><PriceChart bars={data.bars} ma20={data.indicators.ma20} ma50={data.indicators.ma50} /></div>
 
-      <h2 className="mt-8 text-sm font-medium text-neutral-400">RSI (14)</h2>
-      <div className="mt-2"><RsiChart bars={data.bars} rsi14={data.indicators.rsi14} /></div>
-
-      <h2 className="mt-8 text-sm font-medium text-neutral-400">MACD (12/26/9)</h2>
-      <div className="mt-2">
-        <MacdChart bars={data.bars} macdLine={data.indicators.macdLine} macdSignal={data.indicators.macdSignal} macdHistogram={data.indicators.macdHistogram} />
+      <div className="mt-6">
+        <TickerCharts
+          bars={data.bars}
+          indicators={{
+            ma20: data.indicators.ma20, ma50: data.indicators.ma50, rsi14: data.indicators.rsi14,
+            macdLine: data.indicators.macdLine, macdSignal: data.indicators.macdSignal, macdHistogram: data.indicators.macdHistogram,
+          }}
+        />
       </div>
 
       <form action="/compare" className="mt-8 flex items-center gap-2">
