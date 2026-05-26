@@ -50,7 +50,7 @@ export async function getMemo(ticker: string, opts: { force?: boolean } = {}): P
   }
 
   await getNews(ticker, { force: opts.force });
-  const rows = await getRecentArticles(company.id, isoDaysAgo(LOOKBACK_DAYS));
+  const rows = await getRecentArticles(company.id, isoDaysAgo(LOOKBACK_DAYS), 10);
   if (rows.length === 0) return { status: "no_news", memo: null, citedArticles: [] };
 
   if (!env.GEMINI_API_KEY || !(await canCall("gemini", env.GEMINI_DAILY_LIMIT))) {

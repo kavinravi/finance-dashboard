@@ -12,21 +12,27 @@ export function WatchlistManager({ initialTickers }: { initialTickers: string[] 
     const ticker = input.trim().toUpperCase();
     if (!ticker) return;
     setBusy(true);
-    await fetch("/api/watchlist", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker }),
-    });
-    setBusy(false);
-    setInput("");
-    router.refresh();
+    try {
+      await fetch("/api/watchlist", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker }),
+      });
+      setInput("");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function remove(ticker: string) {
     setBusy(true);
-    await fetch("/api/watchlist", {
-      method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker }),
-    });
-    setBusy(false);
-    router.refresh();
+    try {
+      await fetch("/api/watchlist", {
+        method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticker }),
+      });
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

@@ -34,6 +34,6 @@ export async function getNews(
     await pruneExpiredForCompany(company.id).catch(() => 0); // best-effort; never break the news path
   }
 
-  const rows = await getRecentArticles(company.id, isoDaysAgo(LOOKBACK_DAYS));
+  const rows = await getRecentArticles(company.id, isoDaysAgo(LOOKBACK_DAYS), 10);
   return { articles: rows, asOf: rows[0]?.publishedAt ?? null };
 }
