@@ -6,6 +6,7 @@ import { getBars, upsertBars } from "@/lib/db/price-bars";
 import { canCall, recordSuccess, recordError } from "@/lib/db/provider-state";
 import { computeReturns, sma, rsi, macd, rollingVolatility } from "@/lib/indicators";
 import type { PriceBar, PeriodReturns } from "@/lib/types";
+import { fetchFromDate } from "@/lib/services/price-fetch-window";
 
 export type Range = "1m" | "3m" | "6m" | "ytd" | "1y";
 
@@ -46,16 +47,16 @@ async function ensureCompany(ticker: string) {
   );
 }
 
-// NOTE: range is not yet applied — full ~2y history is returned regardless. Range slicing is a future enhancement.
+// History is fetched max-available (see fetchFromDate). `range` is applied client-side (lib/charts/range.ts),
+// so it stays accepted-but-unused here to keep callers (e.g. comparison-service) unchanged.
 export async function getTickerData(ticker: string, _range: Range = "1y"): Promise<TickerData> {
   const company = await ensureCompany(ticker);
   let bars = await getBars(company.id);
   let source: TickerData["source"] = "cache";
 
   if (!isFresh(bars)) {
-    const from = new Date(); from.setUTCFullYear(from.getUTCFullYear() - 2);
-    const fromIso = from.toISOString().slice(0, 10);
     const toIso = new Date().toISOString().slice(0, 10);
+    const fromIso = fetchFromDate(bars, toIso);
 
     let fetched: PriceBar[] | null = null;
     if (await canCall("fmp", env.FMP_DAILY_LIMIT)) {
