@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { getTickerData } from "@/lib/services/price-service";
+import { getNews } from "@/lib/services/news-service";
 import { ReturnsTable } from "@/components/returns-table";
 import { PriceChart } from "@/components/price-chart";
 import { StalenessBadge } from "@/components/staleness-badge";
+import { NewsTable } from "@/components/news-table";
 import { formatPrice } from "@/lib/formatters";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
   const data = await getTickerData(symbol.toUpperCase(), "1y");
+  const news = await getNews(data.ticker);
   const latest = data.bars.at(-1)?.close ?? null;
 
   if (data.bars.length === 0) {
@@ -42,6 +45,11 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
           className="rounded bg-neutral-900 px-2 py-1 font-mono uppercase ring-1 ring-neutral-800" />
         <button className="rounded bg-neutral-200 px-3 py-1 text-sm font-medium text-neutral-900">Go</button>
       </form>
+
+      <section className="mt-10">
+        <h2 className="text-sm font-medium text-neutral-400">Recent news</h2>
+        <div className="mt-2"><NewsTable articles={news.articles} /></div>
+      </section>
     </main>
   );
 }
