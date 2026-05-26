@@ -6,6 +6,9 @@ const schema = z.object({
   FMP_DAILY_LIMIT: z.coerce.number().int().positive().default(250),
   FINNHUB_API_KEY: z.string().min(1).optional(), // used in SP2
   GEMINI_API_KEY: z.string().min(1).optional(),  // used in SP2
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
+  GEMINI_PREVIEW_MODEL: z.string().min(1).optional(),
+  GEMINI_DAILY_LIMIT: z.coerce.number().int().positive().default(200),
 });
 
 const parsed = schema.safeParse({
@@ -14,6 +17,9 @@ const parsed = schema.safeParse({
   FMP_DAILY_LIMIT: process.env.FMP_DAILY_LIMIT,
   FINNHUB_API_KEY: process.env.FINNHUB_API_KEY,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  GEMINI_MODEL: process.env.GEMINI_MODEL,
+  GEMINI_PREVIEW_MODEL: process.env.GEMINI_PREVIEW_MODEL,
+  GEMINI_DAILY_LIMIT: process.env.GEMINI_DAILY_LIMIT,
 });
 
 if (!parsed.success) {
