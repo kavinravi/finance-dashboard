@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, date, timestamp, doublePrecision, bigint, integer, unique,
+  pgTable, uuid, text, date, timestamp, doublePrecision, bigint, integer, unique, jsonb,
 } from "drizzle-orm/pg-core";
 
 export const companies = pgTable("companies", {
@@ -36,6 +36,35 @@ export const recentSearches = pgTable("recent_searches", {
   resolvedTicker: text("resolved_ticker"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const articles = pgTable("articles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  source: text("source").notNull(),            // finnhub | yahoo_rss
+  sourceArticleId: text("source_article_id"),
+  url: text("url").notNull(),
+  urlHash: text("url_hash").notNull(),          // sha256 of canonicalized URL
+  title: text("title").notNull(),
+  summary: text("summary"),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+  imageUrl: text("image_url"),
+  related: text("related"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+}, (t) => [unique("uq_article_company_urlhash").on(t.companyId, t.urlHash)]);
+
+export const dailyMemos = pgTable("daily_memos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  memoDate: date("memo_date").notNull(),
+  model: text("model").notNull(),
+  summaryJson: jsonb("summary_json").notNull(),
+  toneLabel: text("tone_label").notNull(),
+  toneScore: integer("tone_score").notNull(),
+  sourceArticleIds: jsonb("source_article_ids").notNull(),
+  basedOnArticleCount: integer("based_on_article_count").notNull(),
+  generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique("uq_memo_company_date").on(t.companyId, t.memoDate)]);
 
 export const providerState = pgTable("provider_state", {
   provider: text("provider").primaryKey(),       // "fmp" | "yahoo"
