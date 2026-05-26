@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { extractConcepts } from "./extract";
-import type { RawCompanyFacts } from "@/lib/types";
+import type { RawCompanyFacts, SecFact } from "@/lib/types";
 
-function usd(facts: object[]) { return { units: { USD: facts } }; }
+function usd(facts: SecFact[]) { return { units: { USD: facts } }; }
 
 const RAW: RawCompanyFacts = {
   cik: 320193,
