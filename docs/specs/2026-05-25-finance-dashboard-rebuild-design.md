@@ -69,6 +69,7 @@ Each sub-project gets its own spec → plan → build cycle so we never build on
 3. **SP3 — Fundamentals:** SEC EDGAR CIK mapping + CompanyFacts (minimal concepts), fundamentals card. Adds `cik` to `companies`. *(detailed in §8 below)*
 4. **SP4 — Deploy & harden:** Vercel deploy (reusing the existing Neon DB), app-level password gate, provider-health page (reads `provider_state`), opportunistic + manual cache pruning, security hardening. *(detailed in §9 below)*
 5. **SP5 — UX refinements (post-deploy):** cap news volume, split the ticker page into tabbed routes (Charts & Fundamentals / News & Memo), add RSI/MACD charts, add a multi-stock watchlist overlay alongside the existing 2-stock compare. *(detailed in §10 below)*
+6. **SP6 — Chart ranges, watchlist tab, global search (post-deploy):** customizable chart date ranges (presets + custom calendar), Watchlist moved into the ticker tab bar, and a persistent global search header. *(detailed in §11 below)*
 
 ---
 
@@ -568,11 +569,65 @@ Added after the first Vercel deploy, from live-use feedback. Four changes: cap n
 - A DB-backed watchlist adds/removes tickers and overlays them as normalized lines on one chart (≤10), shared across devices; the 2-stock `/compare` is unchanged.
 - Unit + integration + E2E pass; live smoke + screenshots confirm the charts, tabs, and overlay render.
 
-## 11. Out of scope (MVP)
+## 11. SP6 detailed design — Chart ranges, watchlist tab, global search (post-deploy)
+
+Second post-deploy refinement round, from continued live-use feedback. Three changes: customizable chart date ranges (presets + custom calendar), move Watchlist into the ticker tab bar, and a persistent global search header. No new providers; reuses existing data + the existing search.
+
+### 11.1 Scope & decisions (locked during brainstorming)
+
+- **Price history = max available.** `price-service` fetches each ticker's full history on a cold cache and refreshes **incrementally** (a warm-but-stale cache fetches only from the last cached bar forward). "ALL" = full history; custom ranges are bounded by it.
+- **Range applied client-side.** The Charts page ships the full bars + indicator series; a pure `sliceByRange` slices both to the selected window. Indicators are computed on the **full** series first, so MA/RSI/MACD stay correct at the window's left edge. Default view = **1Y**.
+- **Presets: 1M / 3M / 6M / YTD / 1Y / ALL**, plus a custom from–to via native `<input type="date">` (calendar dropdown, dark-styled, clamped to the available range). Only the three charts respond; the returns table stays fixed-period.
+- **Watchlist = middle tab.** `TickerTabs` → Charts & Fundamentals · Watchlist · News & Memo; Watchlist links to the global `/watchlist` (kept in the header nav too).
+- **Persistent global search header.** A `SiteHeader` (search + nav) replaces `AppNav`; the "← Search" back link is removed. The header search is hidden on `/` (the homepage keeps its own big search) and the whole header is hidden on `/login`.
+
+**Deferred:** chart downsampling / on-demand range fetch for very long histories (ship-full is accepted at personal scale); making the returns table range-aware; intraday data.
+
+### 11.2 Price history fetch (max + incremental)
+
+- `lib/services/price-service.ts`: introduce `HISTORY_FLOOR = "1970-01-01"`. Replace the fixed 2-year `from` with: **cold cache** (no bars) → fetch `HISTORY_FLOOR`→today; **warm-but-stale** → fetch from `lastBarDate` (minus a few-day buffer for revisions) → today; upsert as today. The now-unused `_range` param is dropped (slicing is client-side). Extract a pure `fetchFromDate(bars, today)` helper (returns the `from` string) for unit testing.
+- `fmp.dailyPrices` / `yahoo.dailyPrices` already accept `(ticker, from, to)`; no provider change beyond the wider `from`.
+
+### 11.3 Range slicing (pure) + controls
+
+- `lib/charts/range.ts` (pure): `export type ChartRange = "1m" | "3m" | "6m" | "ytd" | "1y" | "all" | { from: string; to: string }`. `rangeStartDate(range, bars, today): string` (preset → cutoff; YTD → Jan 1 of the current year; ALL → first bar's date; custom → its `from`). `sliceByRange(bars, indicators, range, today)` returns `{ bars, indicators }` sliced by the same `[startIndex, endIndex]` span across bars + every indicator array. Clamps to available data; empty input → empty.
+- `components/ticker-charts.tsx` (client): holds the range state, renders the preset buttons (active one highlighted like the tabs) + the two date inputs (styled), calls `sliceByRange`, and renders `PriceChart` / `RsiChart` / `MacdChart` with the sliced data. Default `"1y"`.
+- `app/ticker/[symbol]/page.tsx`: passes the full `data.bars` + `data.indicators` into `<TickerCharts/>` (replacing the three inline chart blocks). Header price, returns table, compare form, and fundamentals stay.
+
+### 11.4 Watchlist tab
+
+- `components/ticker-tabs.tsx`: add a middle `Link` to `/watchlist` ("Watchlist") between the Charts and News links. It links away from the ticker (the shared watchlist), so it is never the "active" tab on ticker routes.
+
+### 11.5 Global search header
+
+- `components/site-header.tsx` (client, replaces `app-nav.tsx`): renders the nav links (Home / Watchlist / Health / Log out — logout posts `/api/logout`) plus a compact `SearchBar`. Via `usePathname`: hide the whole header on `/login`; hide the `SearchBar` (keep nav) on `/`.
+- `app/layout.tsx`: render `<SiteHeader/>` instead of `<AppNav/>`; delete `app-nav.tsx`. `<Analytics/>` stays.
+- `app/ticker/[symbol]/layout.tsx`: remove the "← Search" link (keep the symbol heading + tabs).
+- `app/page.tsx`: unchanged — keeps its big `SearchBar` + `RecentSearches`; the header search is simply hidden here.
+- `SearchBar` is reused as-is (it already navigates to `/ticker/[symbol]` on select).
+
+### 11.6 Error handling — "degrade, never crash"
+
+- A custom range with `from > to` or outside the available data clamps to the valid window (or shows the full series); never crashes. Empty bars → the existing "couldn't resolve" path. `sliceByRange` is pure + total. The header search degrades exactly as today (a search-API failure → empty results).
+
+### 11.7 Testing
+
+- **Unit (Vitest):** `rangeStartDate` / `sliceByRange` (each preset, the YTD boundary, custom, clamping, empty + out-of-range); `fetchFromDate` (cold → floor, stale → last bar).
+- **E2E (Playwright, gated):** range presets toggle active state and the custom date inputs accept values on a charts tab; the Watchlist tab sits between Charts and News and navigates to `/watchlist`; the header search is visible on a ticker page and hidden on `/`; submitting a header search lands on a ticker page.
+- **Live smoke + screenshots:** AAPL at 1M / 1Y / ALL + a custom range; the header search on a ticker; the three-tab bar.
+
+### 11.8 SP6 acceptance criteria
+
+- The charts offer 1M/3M/6M/YTD/1Y/ALL presets + a custom calendar range, styled to match, switching instantly; indicators remain correct at the window's left edge; "ALL" shows full available history.
+- The ticker tab bar reads Charts & Fundamentals · Watchlist · News & Memo, and Watchlist opens the shared watchlist.
+- A search bar persists in the header on every page except the homepage (and login); the "← Search" link is gone; searching navigates to the ticker.
+- Unit + E2E pass; live smoke + screenshots confirm the ranges, the tab, and the header search.
+
+## 12. Out of scope (MVP)
 
 Per `plan.md` non-goals: no scraping of paywalled article bodies, no trading execution, no portfolio optimization, no public redistribution of provider data, no delisted-company database, no buy/sell/hold output. Also out of scope for the MVP specifically: local FinBERT, a separate Python service, Alpha Vantage, paid data tiers, and a background scheduler.
 
-## 12. Assumptions
+## 13. Assumptions
 
 - Personal/non-commercial use; app stays private behind a password gate.
 - US-listed securities (FMP free is US-only; SEC is US-only).
