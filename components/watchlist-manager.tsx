@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 export function WatchlistManager({ initialTickers }: { initialTickers: string[] }) {
@@ -45,7 +46,7 @@ export function WatchlistManager({ initialTickers }: { initialTickers: string[] 
       <div className="flex flex-wrap gap-2">
         {initialTickers.map((t) => (
           <span key={t} className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-1 text-sm">
-            <span className="font-mono">{t}</span>
+            <Link href={`/ticker/${t}`} className="font-mono hover:underline">{t}</Link>
             <button onClick={() => remove(t)} disabled={busy} aria-label={`Remove ${t}`} className="text-neutral-500 hover:text-red-400">×</button>
           </span>
         ))}

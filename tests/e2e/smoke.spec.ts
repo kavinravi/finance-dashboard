@@ -57,14 +57,16 @@ test("charts tab shows fundamentals; news tab shows the memo (intercepted)", asy
   await expect(page.getByRole("heading", { name: "Recent news" })).toBeVisible();
 });
 
-test("watchlist add then remove updates the chips", async ({ page }) => {
+test("watchlist add then remove; ticker links to its page", async ({ page }) => {
   await page.goto("/watchlist");
   await page.getByPlaceholder(/Add ticker/i).fill("ZZ");
   await page.getByRole("button", { name: "Add" }).click();
-  await expect(page.locator("span.font-mono", { hasText: /^ZZ$/ })).toBeVisible();
+  const chip = page.locator("a.font-mono", { hasText: /^ZZ$/ });
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveAttribute("href", "/ticker/ZZ");
 
   await page.getByRole("button", { name: "Remove ZZ" }).click();
-  await expect(page.locator("span.font-mono", { hasText: /^ZZ$/ })).toHaveCount(0);
+  await expect(page.locator("a.font-mono", { hasText: /^ZZ$/ })).toHaveCount(0);
 });
 
 test("charts tab has range controls and ALL renders the chart", async ({ page }) => {
@@ -77,12 +79,12 @@ test("charts tab has range controls and ALL renders the chart", async ({ page })
   await expect(page.locator("svg .recharts-line").first()).toBeVisible();
 });
 
-test("Watchlist sits between Charts and News and navigates", async ({ page }) => {
+test("ticker tabs are Charts, News, Watchlist in order; Watchlist navigates", async ({ page }) => {
   await page.goto("/ticker/NVDA");
-  const tabs = page.locator("main nav"); // the ticker tab bar (the header nav is outside <main>)
-  await expect(tabs.getByRole("link", { name: "Charts & Fundamentals" })).toBeVisible();
-  await expect(tabs.getByRole("link", { name: "News & Memo" })).toBeVisible();
-  await tabs.getByRole("link", { name: "Watchlist", exact: true }).click();
+  await expect(page.locator("main nav a")).toHaveText([
+    "Charts & Fundamentals", "News & Memo", "Watchlist",
+  ]);
+  await page.locator("main nav").getByRole("link", { name: "Watchlist", exact: true }).click();
   await expect(page).toHaveURL(/\/watchlist/);
   await expect(page.getByRole("heading", { name: "Watchlist" })).toBeVisible();
 });

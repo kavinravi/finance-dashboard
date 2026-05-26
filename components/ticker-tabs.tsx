@@ -11,8 +11,8 @@ export function TickerTabs({ symbol }: { symbol: string }) {
   return (
     <nav className="mt-4 flex gap-6 border-b border-neutral-800">
       <Link href={base} className={cls(!onNews)}>Charts &amp; Fundamentals</Link>
-      <Link href="/watchlist" className={cls(false)}>Watchlist</Link>
       <Link href={`${base}/news`} className={cls(onNews)}>News &amp; Memo</Link>
+      <Link href="/watchlist" className={cls(false)}>Watchlist</Link>
     </nav>
   );
 }
