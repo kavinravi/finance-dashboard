@@ -75,7 +75,9 @@ export function buildPrompt(input: MemoInput): string {
 }
 
 export async function generateMemo(input: MemoInput): Promise<MemoOutput> {
-  const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY! });
+  const apiKey = env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  const ai = new GoogleGenAI({ apiKey });
   let lastErr = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -89,7 +91,7 @@ export async function generateMemo(input: MemoInput): Promise<MemoOutput> {
         await recordSuccess("gemini", env.GEMINI_DAILY_LIMIT);
         return parsed.data;
       }
-      lastErr = "schema validation failed";
+      lastErr = "schema validation failed: " + parsed.error.issues.map((i) => i.path.join(".") + " " + i.message).join("; ");
     } catch (e) {
       lastErr = String(e);
     }
