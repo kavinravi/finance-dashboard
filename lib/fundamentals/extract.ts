@@ -5,32 +5,44 @@ function durationDays(f: SecFact): number {
   return (Date.parse(f.end) - Date.parse(f.start)) / 86400000;
 }
 
-// Most-recent full fiscal-year fact (fp:"FY", ~annual duration). Tie-break by latest filing.
-function pickAnnualFlow(facts: SecFact[]): SecFact | null {
+// A fact tagged with its candidate-tag priority (0 = most-preferred tag).
+type RankedFact = SecFact & { __pri: number };
+
+// Latest period first; for the same period prefer the earlier (preferred) candidate tag;
+// then prefer the latest filing.
+function byRecency(a: RankedFact, b: RankedFact): number {
+  return b.end.localeCompare(a.end) || a.__pri - b.__pri || (b.filed ?? "").localeCompare(a.filed ?? "");
+}
+
+// Most-recent full fiscal-year fact (fp:"FY", ~annual duration).
+function pickAnnualFlow(facts: RankedFact[]): RankedFact | null {
   const annual = facts.filter((f) => f.fp === "FY" && durationDays(f) >= 300);
   if (annual.length === 0) return null;
-  return [...annual].sort(
-    (a, b) => b.end.localeCompare(a.end) || (b.filed ?? "").localeCompare(a.filed ?? ""),
-  )[0];
+  return [...annual].sort(byRecency)[0];
 }
 
-// Latest instant (balance-sheet / shares). Tie-break by latest filing.
-function pickLatestInstant(facts: SecFact[]): SecFact | null {
+// Latest instant (balance-sheet / shares).
+function pickLatestInstant(facts: RankedFact[]): RankedFact | null {
   if (facts.length === 0) return null;
-  return [...facts].sort(
-    (a, b) => b.end.localeCompare(a.end) || (b.filed ?? "").localeCompare(a.filed ?? ""),
-  )[0];
+  return [...facts].sort(byRecency)[0];
 }
 
-// First non-empty fact array among the candidate tags, in the given unit bucket.
-function factsFor(raw: RawCompanyFacts, taxonomy: string, tags: string[], unit: string): SecFact[] {
+// Merge facts from ALL candidate tags (in the given unit bucket), tagging each with its
+// candidate priority. Merging (rather than first-non-empty) handles XBRL tag migration:
+// e.g. a company that reported revenue under `Revenues` until 2018, then switched to
+// `RevenueFromContractWithCustomerExcludingAssessedTax` — the stale tag still carries an
+// old value, so first-non-empty would return years-stale data. Picking the latest period
+// across the union fixes that; the priority tiebreak keeps a preferred tag (e.g. diluted
+// EPS over basic) when multiple tags report the same period.
+function collectFacts(raw: RawCompanyFacts, taxonomy: string, tags: string[], unit: string): RankedFact[] {
   const tax = raw.facts?.[taxonomy];
   if (!tax) return [];
-  for (const tag of tags) {
+  const out: RankedFact[] = [];
+  tags.forEach((tag, pri) => {
     const arr = tax[tag]?.units?.[unit];
-    if (Array.isArray(arr) && arr.length > 0) return arr;
-  }
-  return [];
+    if (Array.isArray(arr)) for (const f of arr) out.push({ ...f, __pri: pri });
+  });
+  return out;
 }
 
 const EMPTY: ExtractedFundamentals = {
@@ -44,7 +56,7 @@ const EMPTY: ExtractedFundamentals = {
 
 export function extractConcepts(raw: RawCompanyFacts | null): ExtractedFundamentals {
   if (!raw || !raw.facts) return EMPTY;
-  const gaap = (tags: string[], unit = "USD") => factsFor(raw, "us-gaap", tags, unit);
+  const gaap = (tags: string[], unit = "USD") => collectFacts(raw, "us-gaap", tags, unit);
 
   const revenue = pickAnnualFlow(gaap(["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"]));
   const netIncome = pickAnnualFlow(gaap(["NetIncomeLoss"]));
@@ -56,7 +68,7 @@ export function extractConcepts(raw: RawCompanyFacts | null): ExtractedFundament
   const equity = pickLatestInstant(gaap(["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]));
   const currentAssets = pickLatestInstant(gaap(["AssetsCurrent"]));
   const currentLiabilities = pickLatestInstant(gaap(["LiabilitiesCurrent"]));
-  const shares = pickLatestInstant(factsFor(raw, "dei", ["EntityCommonStockSharesOutstanding"], "shares"));
+  const shares = pickLatestInstant(collectFacts(raw, "dei", ["EntityCommonStockSharesOutstanding"], "shares"));
 
   const anchor = netIncome ?? revenue;
 

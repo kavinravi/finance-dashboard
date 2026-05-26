@@ -80,3 +80,39 @@ describe("extractConcepts", () => {
     expect(none.concepts.netIncome).toBeNull();
   });
 });
+
+describe("extractConcepts — tag migration & preference", () => {
+  it("ignores a stale alternate tag and picks the latest period across candidate tags", () => {
+    const raw: RawCompanyFacts = {
+      facts: {
+        "us-gaap": {
+          // Stale: company stopped tagging revenue under `Revenues` after FY2018.
+          Revenues: { units: { USD: [
+            { start: "2017-10-01", end: "2018-09-29", val: 265595000000, fy: 2018, fp: "FY", form: "10-K", filed: "2018-11-05" },
+          ] } },
+          // Current: switched to this tag — FY2024 is the real latest revenue.
+          RevenueFromContractWithCustomerExcludingAssessedTax: { units: { USD: [
+            { start: "2023-10-01", end: "2024-09-28", val: 391035000000, fy: 2024, fp: "FY", form: "10-K", filed: "2024-11-01" },
+          ] } },
+        },
+      },
+    };
+    expect(extractConcepts(raw).concepts.revenue).toBe(391035000000); // not the stale 2018 value
+  });
+
+  it("prefers diluted EPS over basic for the same period", () => {
+    const raw: RawCompanyFacts = {
+      facts: {
+        "us-gaap": {
+          EarningsPerShareDiluted: { units: { "USD/shares": [
+            { start: "2023-10-01", end: "2024-09-28", val: 6.08, fy: 2024, fp: "FY", form: "10-K", filed: "2024-11-01" },
+          ] } },
+          EarningsPerShareBasic: { units: { "USD/shares": [
+            { start: "2023-10-01", end: "2024-09-28", val: 6.11, fy: 2024, fp: "FY", form: "10-K", filed: "2024-11-01" },
+          ] } },
+        },
+      },
+    };
+    expect(extractConcepts(raw).concepts.eps).toBe(6.08); // diluted, not basic
+  });
+});
