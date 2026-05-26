@@ -3,3 +3,5 @@ onlyBuiltDependencies:
   - sharp
   - unrs-resolver
   - esbuild
+  - '@google/genai'
+  - protobufjs
