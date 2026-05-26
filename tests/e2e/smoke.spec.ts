@@ -66,3 +66,32 @@ test("watchlist add then remove updates the chips", async ({ page }) => {
   await page.getByRole("button", { name: "Remove ZZ" }).click();
   await expect(page.locator("span.font-mono", { hasText: /^ZZ$/ })).toHaveCount(0);
 });
+
+test("charts tab has range controls and ALL renders the chart", async ({ page }) => {
+  await page.goto("/ticker/NVDA");
+  for (const label of ["1M", "3M", "6M", "YTD", "1Y", "ALL"]) {
+    await expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();
+  }
+  await expect(page.locator('input[type="date"]')).toHaveCount(2);
+  await page.getByRole("button", { name: "ALL", exact: true }).click();
+  await expect(page.locator("svg .recharts-line").first()).toBeVisible();
+});
+
+test("Watchlist sits between Charts and News and navigates", async ({ page }) => {
+  await page.goto("/ticker/NVDA");
+  const tabs = page.locator("main nav"); // the ticker tab bar (the header nav is outside <main>)
+  await expect(tabs.getByRole("link", { name: "Charts & Fundamentals" })).toBeVisible();
+  await expect(tabs.getByRole("link", { name: "News & Memo" })).toBeVisible();
+  await tabs.getByRole("link", { name: "Watchlist", exact: true }).click();
+  await expect(page).toHaveURL(/\/watchlist/);
+  await expect(page.getByRole("heading", { name: "Watchlist" })).toBeVisible();
+});
+
+test("header search is hidden on the homepage and present on ticker pages", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("header input")).toHaveCount(0);
+  await expect(page.getByPlaceholder(/Search ticker/i)).toBeVisible();
+
+  await page.goto("/ticker/NVDA");
+  await expect(page.locator("header input")).toHaveCount(1);
+});
