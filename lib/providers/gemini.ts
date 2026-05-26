@@ -3,11 +3,29 @@ import { z } from "zod";
 import { env } from "@/lib/env";
 import { recordSuccess, recordError } from "@/lib/db/provider-state";
 
+const confidenceSchema = z.preprocess(
+  (v) => (typeof v === "string" ? v.toLowerCase().trim() : v),
+  z.enum(["low", "medium", "high"]).catch("medium"),
+);
+
+const toneLabelSchema = z.preprocess(
+  (v) => (typeof v === "string" ? v.toLowerCase().trim().replace(/[\s-]+/g, "_") : v),
+  z.enum(["bearish", "somewhat_bearish", "neutral", "somewhat_bullish", "bullish"]).catch("neutral"),
+);
+
+const toneScoreSchema = z.preprocess(
+  (v) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 50;
+  },
+  z.number().int().min(0).max(100),
+);
+
 export const developmentSchema = z.object({
   claim: z.string(),
   why_it_matters: z.string(),
   source_article_ids: z.array(z.string()),
-  confidence: z.enum(["low", "medium", "high"]),
+  confidence: confidenceSchema,
 });
 
 export const memoOutputSchema = z.object({
@@ -20,8 +38,8 @@ export const memoOutputSchema = z.object({
   watch_items: z.array(z.string()),
   caveats: z.array(z.string()),
   overall_news_tone: z.object({
-    label: z.enum(["bearish", "somewhat_bearish", "neutral", "somewhat_bullish", "bullish"]),
-    score: z.number().int().min(0).max(100),
+    label: toneLabelSchema,
+    score: toneScoreSchema,
     rationale: z.string(),
   }),
 });
