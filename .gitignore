@@ -208,3 +208,7 @@ out
 .vercel
 next-env.d.ts
 .env*.local
+
+# Un-ignore Next.js source directories that conflict with Python packaging patterns
+!lib/
+!lib64/
