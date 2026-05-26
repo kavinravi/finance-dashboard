@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { shouldAllow } from "@/lib/auth/gate";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth/session";
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const appPassword = process.env.APP_PASSWORD;
   const sessionSecret = process.env.SESSION_SECRET;
