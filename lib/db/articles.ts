@@ -28,13 +28,13 @@ export async function getRecentArticles(companyId: string, sinceIso: string): Pr
 }
 
 export async function newestArticleCreatedAt(companyId: string): Promise<Date | null> {
-  const [row] = await db.select().from(articles)
+  const [row] = await db.select({ createdAt: articles.createdAt }).from(articles)
     .where(eq(articles.companyId, companyId)).orderBy(desc(articles.createdAt)).limit(1);
   return row?.createdAt ?? null;
 }
 
 export async function hasArticleNewerThan(companyId: string, t: Date): Promise<boolean> {
-  const [row] = await db.select().from(articles)
+  const [row] = await db.select({ id: articles.id }).from(articles)
     .where(and(eq(articles.companyId, companyId), gt(articles.createdAt, t))).limit(1);
   return !!row;
 }
