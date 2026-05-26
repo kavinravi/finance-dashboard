@@ -71,4 +71,25 @@ describe("getTickerData", () => {
     expect(upsertBars).toHaveBeenCalledWith("c1", expect.any(Array), "yahoo");
     expect(out.source).toBe("yahoo");
   });
+
+  it("degrades to cache (does not throw) when both providers fail and cache is empty", async () => {
+    getBars.mockResolvedValue([]);
+    fmpProfile.mockResolvedValue(null);
+    fmpPrices.mockRejectedValue(new Error("fmp down"));
+    yahooPrices.mockRejectedValue(new Error("yahoo down"));
+    const out = await getTickerData("NVDA", "1y");
+    expect(out.source).toBe("cache");
+    expect(out.bars).toEqual([]);
+    expect(out.returns.oneDay).toBeNull();
+  });
+
+  it("skips FMP and uses Yahoo when the FMP budget is exhausted", async () => {
+    getBars.mockResolvedValueOnce([]).mockResolvedValueOnce(freshBars("2020-01-01"));
+    canCall.mockResolvedValue(false);
+    yahooPrices.mockResolvedValue(freshBars("2020-01-01"));
+    const out = await getTickerData("NVDA", "1y");
+    expect(fmpPrices).not.toHaveBeenCalled();
+    expect(upsertBars).toHaveBeenCalledWith("c1", expect.any(Array), "yahoo");
+    expect(out.source).toBe("yahoo");
+  });
 });

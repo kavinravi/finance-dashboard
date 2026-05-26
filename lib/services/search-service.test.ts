@@ -37,4 +37,19 @@ describe("resolveQuery", () => {
     expect(out).toEqual([]);
     expect(logSearch).toHaveBeenCalledWith("zzzzz", null);
   });
+
+  it("returns [] when both providers throw", async () => {
+    fmpSearch.mockRejectedValue(new Error("fmp down"));
+    yahooSearch.mockRejectedValue(new Error("yahoo down"));
+    const out = await resolveQuery("xyz");
+    expect(out).toEqual([]);
+    expect(logSearch).toHaveBeenCalledWith("xyz", null);
+  });
+
+  it("short-circuits an empty query without calling providers or logging", async () => {
+    const out = await resolveQuery("   ");
+    expect(out).toEqual([]);
+    expect(fmpSearch).not.toHaveBeenCalled();
+    expect(logSearch).not.toHaveBeenCalled();
+  });
 });
