@@ -67,7 +67,7 @@ Each sub-project gets its own spec → plan → build cycle so we never build on
 1. **SP1 — Foundation + Search + Prices + Comparison** *(detailed below; build first)*. Usable slice: search "NVIDIA" → NVDA research page with price chart + AMD comparison.
 2. **SP2 — News + Sentiment + Memo:** Finnhub + Yahoo RSS ingestion, dedupe, Gemini News Tone + source-linked daily memo, news table + tone meter + memo UI. *(detailed in §7 below)*
 3. **SP3 — Fundamentals:** SEC EDGAR CIK mapping + CompanyFacts (minimal concepts), fundamentals card. Adds `cik` to `companies`. *(detailed in §8 below)*
-4. **SP4 — Deploy & harden:** Vercel + Neon prod, password gate, provider-health page (reads `provider_state`), cache retention/pruning.
+4. **SP4 — Deploy & harden:** Vercel deploy (reusing the existing Neon DB), app-level password gate, provider-health page (reads `provider_state`), opportunistic + manual cache pruning, security hardening. *(detailed in §9 below)*
 
 ---
 
@@ -102,7 +102,7 @@ finance-dashboard/
 
 **Stack:** Next.js App Router, TypeScript, Tailwind, shadcn/ui, Drizzle + Neon Postgres, Zod, TanStack Query/Table, Recharts + lightweight-charts.
 
-**Env (finalized at scaffold):** `FMP_API_KEY`, `FINNHUB_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL=gemini-3.5-flash`, `GEMINI_PREVIEW_MODEL=gemini-3-flash-preview` (optional), `SEC_USER_AGENT`, `DATABASE_URL` (Neon), `APP_PASSWORD` (SP4), `FMP_DAILY_LIMIT=250`. A committed `.env.example` documents all of these.
+**Env (finalized at scaffold):** `FMP_API_KEY`, `FINNHUB_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL=gemini-3.5-flash`, `GEMINI_PREVIEW_MODEL=gemini-3-flash-preview` (optional), `SEC_USER_AGENT`, `DATABASE_URL` (Neon), `APP_PASSWORD` + `SESSION_SECRET` (SP4), `FMP_DAILY_LIMIT=250`. A committed `.env.example` documents all of these.
 
 ### 6.2 Data model (Drizzle / Postgres) — four tables
 
@@ -405,11 +405,115 @@ Client component; fetches `/api/fundamentals/[symbol]` on mount. States: `loadin
 - An ETF/index (SPY/QQQ) shows `not_applicable`; a missing key/CIK or SEC failure shows `unavailable`; missing individual concepts show "N/A" — no crash.
 - Unit + integration + E2E suites pass with SEC mocked.
 
-## 9. Out of scope (MVP)
+## 9. SP4 detailed design — Deploy & harden
+
+Build fourth (final). Usable outcome: the app runs at a private, password-gated `*.vercel.app` URL Kavin can share with his dad and a few others; internal health is visible at `/health`; the cache stays bounded over time. Verified realities (2026-05-26): Vercel Hobby is free and builds Next.js 16; Vercel's built-in **Password Protection is a paid (Pro) feature**, and its free **"Vercel Authentication" forces every viewer to hold a Vercel account with project access** — neither fits sharing with family, so the gate is **app-level**. Next.js edge middleware exposes Web Crypto (`crypto.subtle`), so cookie signing/verification needs no Node-only APIs.
+
+### 9.1 Scope & what's deferred
+
+**In scope:**
+- App-level **shared-password gate**: `middleware.ts` + a styled `/login` page + an HMAC-signed session cookie.
+- **Provider-health page** (`/health`, gated) reading `provider_state` (fmp/finnhub/gemini/sec).
+- **Cache pruning**: opportunistic (during normal fetches) + a manual "Prune now" action.
+- **Security hardening**: response headers + a disallow-all `robots.txt`.
+- **Deploy** to Vercel, **reusing the existing Neon DB**, from branch `rebuild-nextjs-mvp`.
+- A **deploy runbook** (§9.9) enumerating the user-only account/secret steps.
+
+**Deferred (out of SP4):** per-user accounts/roles; login rate-limiting beyond constant-time compare + a small fixed delay; Vercel Cron / any scheduled data refresh; a strict Content-Security-Policy; a separate production database; a custom domain; merging `rebuild-nextjs-mvp` into `main`.
+
+**Key product decisions (locked during brainstorming):**
+- **Styled login page** over HTTP basic-auth (better UX for non-technical viewers; supports logout/styling) and over Vercel's paid/account-bound protection.
+- **Opportunistic + manual pruning** over a cron job — no new infra or secret, honoring §4's "no scheduler in the MVP."
+- **Reuse the existing Neon DB** for prod (simplest; accepted tradeoff that the test suite writes to the same cache DB and shares the FMP daily counter — don't run the full integration suite while the live FMP budget is relied upon).
+- **Deploy from `rebuild-nextjs-mvp`** (Vercel "Production Branch") so shipping needs no disruptive merge; `main` keeps the Streamlit app as reference.
+
+### 9.2 Env & config
+
+`lib/env.ts` adds two optional vars:
+- `APP_PASSWORD` (`z.string().min(1).optional()`) — the shared gate password.
+- `SESSION_SECRET` (`z.string().min(1).optional()`) — HMAC key for signing the session cookie.
+
+Both are optional in the schema; the **runtime gate** (§9.3) enforces them. `.env.example` documents both (`SESSION_SECRET` = a long random string, e.g. `openssl rand -hex 32`; `APP_PASSWORD` = the chosen shared password). No `vercel.json` is needed (no cron; per-route `maxDuration` already covers the slow routes).
+
+### 9.3 Auth gate
+
+**`lib/auth/session.ts` (pure, runtime-agnostic via Web Crypto):**
+- `createSessionToken(secret, now?) → Promise<string>` — payload = expiry epoch ms (`now + 30d`); token = `${expiry}.${base64url(HMAC_SHA256(String(expiry), secret))}`.
+- `verifySessionToken(token, secret, now?) → Promise<boolean>` — re-computes the HMAC (constant-time compare), rejects malformed/tampered tokens and `expiry <= now`.
+- `safeNextPath(raw) → string` — returns `raw` only if it is a same-origin absolute path (starts with `/`, not `//` or `/\`); else `"/"`. Guards the post-login redirect against open-redirects.
+- `constantTimeEqual(a, b) → boolean` — length-hardened byte compare for the password check.
+
+**`lib/auth/gate.ts` — pure decision (unit-tested):**
+`shouldAllow({ pathname, hasValidSession, appPassword, sessionSecret, onVercel }) → { allow: true } | { allow: false, reason: "login" | "misconfig" }`:
+- Always allow `/login`, `/api/login`, `/api/logout`, `/_next/*`, `/favicon.ico`, `/robots.txt`, and other static assets.
+- If `appPassword` **or** `sessionSecret` is empty: `onVercel` → `{ allow:false, reason:"misconfig" }` (fail closed); else (local dev) → `{ allow:true }` (gate off).
+- Else (both present): `hasValidSession` → allow; otherwise `{ allow:false, reason:"login" }`.
+
+**`middleware.ts` (thin edge wrapper):** reads the `fd_session` cookie, calls `verifySessionToken`, builds the `shouldAllow` input from `env.APP_PASSWORD`, `env.SESSION_SECRET`, and `process.env.VERCEL`, then: allow → `NextResponse.next()`; `login` → redirect to `/login?next=<pathname>`; `misconfig` → a 503 plain response ("App is not configured: APP_PASSWORD/SESSION_SECRET missing"). `matcher` excludes static assets for efficiency; the function re-checks anyway.
+
+**Routes & page:**
+- **`app/login/page.tsx`** (client) — a styled, centered password form; on submit POSTs `{ password, next }` to `/api/login`; shows an inline error on 401; on success navigates to the sanitized `next`.
+- **`app/api/login/route.ts`** (Node) — Zod-validates the body; if `!APP_PASSWORD || !SESSION_SECRET` → 503; constant-time-compares the password; on match sets `fd_session` (HttpOnly, `Secure` when not local, SameSite=Lax, `Max-Age` 30d, `Path=/`) and returns `{ ok:true }`; on miss → a small fixed delay then 401.
+- **`app/api/logout/route.ts`** (Node) — clears `fd_session`, returns `{ ok:true }`.
+- A **logout control** in the app header (small client button) that POSTs `/api/logout` then reloads.
+
+### 9.4 Provider-health page (`/health`)
+
+- **`lib/db/provider-state.ts`** gains `getAllProviderStates(): Promise<ProviderStateRow[]>` (select all, ordered by provider).
+- **`app/health/page.tsx`** — server component, `force-dynamic`, behind the gate. Renders a table of every `provider_state` row: provider, calls today / daily limit, last success, last error time + truncated message, reset time. Plus a small "configuration" block: booleans for whether `FINNHUB_API_KEY` / `GEMINI_API_KEY` / `SEC_USER_AGENT` / `APP_PASSWORD` are set (**never the values**), DB reachability (the query succeeded), and the current server time. Hosts the **Prune-now** control (§9.5).
+
+### 9.5 Cache pruning
+
+- **`lib/db/maintenance.ts` → `pruneExpired(): Promise<{ articles: number; fundamentals: number }>`** — deletes `articles` where `expiresAt < now` and `company_fundamentals` where `expiresAt < now`; returns row counts. (Price bars have no `expiresAt` — the durable cache — and are left intact. `daily_memos` are one-per-company-per-day and tiny — left for now.)
+- **`lib/db/articles.ts` → `pruneExpiredForCompany(companyId)`** — deletes that company's expired articles; called opportunistically by `news-service` after upserting, keeping the hot path bounded at negligible cost.
+- **`app/api/admin/prune/route.ts`** (POST, gated) → `pruneExpired()` → returns the counts.
+- **`components/prune-button.tsx`** (client, on `/health`) → POSTs `/api/admin/prune`, then shows "Removed N articles, M snapshots."
+
+### 9.6 Hardening
+
+- **`next.config.ts` `async headers()`** applied to all routes: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`. (A strict CSP is deferred — high breakage risk with Recharts/Next inline styles, low marginal value on a gated private app.)
+- **`app/robots.ts`** → returns a disallow-all rule (`userAgent: "*"`, `disallow: "/"`) — private; prevents indexing alongside the gate.
+- Boot-time env validation (existing) still throws on missing required vars; prod error pages don't leak stack traces (Next default).
+
+### 9.7 Error handling — "degrade, never crash"
+
+- Missing `APP_PASSWORD`/`SESSION_SECRET`: locally → gate off (dev convenience); on Vercel → fail-closed 503 (never silently public). The login route returns 503 in that state rather than setting an unsigned cookie.
+- Wrong password → 401 + inline message; never reveals whether the password var is set.
+- `/health` and `/api/admin/prune` are gated; a DB read error on `/health` renders a clear "database unreachable" state instead of crashing. `pruneExpired` failures are caught and surfaced as an error, not a thrown page.
+
+### 9.8 Testing
+
+- **Unit (Vitest):** `session.ts` — sign→verify round-trip, tampered token → false, expired → false, malformed → false; `constantTimeEqual`; `safeNextPath` (allows `/ticker/AAPL`; rejects `//evil.com`, `/\evil`, `https://…`; returns `/` for junk); `gate.shouldAllow` (login/static allowed; gated path w/o session → `login`; empty password + `onVercel` → `misconfig`; empty password local → allow; valid session → allow); `robots` output.
+- **Integration (live Neon, as prior SPs):** `pruneExpired()` deletes expired articles + fundamentals and keeps fresh rows (seed one expired + one fresh of each); `pruneExpiredForCompany`; `getAllProviderStates()` returns seeded rows.
+- **E2E (Playwright):** the dev server runs with `APP_PASSWORD` + `SESSION_SECRET` set (gate on). A **global-setup** logs in once via `/api/login` and saves `storageState`; existing smoke specs adopt it so they keep passing behind the gate. A new **`auth.spec.ts`**: unauthenticated `/` → redirected to `/login`; a wrong password → inline error, still on `/login`; the correct password → cookie set → lands on `/`; `/health` renders the provider table.
+- **Live verification (standing rule):** `pnpm build` then `pnpm start` with the gate on → manually confirm: `/` redirects to `/login`; wrong password rejected; correct password → app usable; logout clears the cookie; `/health` shows real provider rows (fmp/finnhub/gemini/sec); `curl -I` shows the four security headers; `/robots.txt` disallows. Screenshot the login + health pages. Lint stays verified in CI (OOM locally).
+
+### 9.9 Deploy runbook (user-only steps)
+
+The assistant can write all code, run a local production build + smoke, generate a `SESSION_SECRET`, and push the branch on request. The following require Kavin's accounts/secrets and **cannot** be performed by the assistant:
+
+1. **Authorize the push** of `rebuild-nextjs-mvp` to `origin` (GitHub).
+2. **Vercel:** create a free Hobby account → *Add New → Project* → import `kavinravi/finance-dashboard` → set **Production Branch = `rebuild-nextjs-mvp`**; Next.js is auto-detected, root = repo root.
+3. **Environment variables** (Vercel → Settings → Environment Variables), copying secret values from the local `.env`: `DATABASE_URL` (the same Neon pooled URL — reuse), `FMP_API_KEY`, `FINNHUB_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL` (`gemini-3.5-flash`), `SEC_USER_AGENT`, `APP_PASSWORD` (chosen shared password), `SESSION_SECRET` (generated), and optionally `FMP_DAILY_LIMIT` / `GEMINI_DAILY_LIMIT`.
+4. **Migrations:** none — prod reuses the already-migrated Neon DB. (A fresh DB would need `pnpm db:migrate` against its URL.)
+5. **Deploy** → Vercel builds and returns a `*.vercel.app` URL.
+6. **Verify + share:** open the URL → confirm the login gate, a ticker page, and `/health` → send the URL + password to viewers. Keep it gated (personal-use licensing). Optional: add a custom domain.
+
+### 9.10 SP4 acceptance criteria
+
+- Visiting any app route unauthenticated redirects to a styled `/login`; the correct shared password sets a session and grants access; a wrong password is rejected; logout clears the session.
+- On Vercel without `APP_PASSWORD`/`SESSION_SECRET`, the app fails closed (never serves content publicly); locally without them, dev is ungated.
+- `/health` (gated) shows live `provider_state` for fmp/finnhub/gemini/sec plus key-configured booleans and DB reachability.
+- Expired `articles`/`company_fundamentals` are pruned opportunistically during use and on demand via the `/health` "Prune now" button.
+- Security headers and a disallow-all `robots.txt` are served; no strict CSP regressions.
+- Unit + integration + E2E suites pass with the gate on; a local production build smoke passes.
+- The app is deployable to a private `*.vercel.app` URL per the §9.9 runbook (account/secret steps performed by the user).
+
+## 10. Out of scope (MVP)
 
 Per `plan.md` non-goals: no scraping of paywalled article bodies, no trading execution, no portfolio optimization, no public redistribution of provider data, no delisted-company database, no buy/sell/hold output. Also out of scope for the MVP specifically: local FinBERT, a separate Python service, Alpha Vantage, paid data tiers, and a background scheduler.
 
-## 10. Assumptions
+## 11. Assumptions
 
 - Personal/non-commercial use; app stays private behind a password gate.
 - US-listed securities (FMP free is US-only; SEC is US-only).
