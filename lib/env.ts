@@ -10,6 +10,8 @@ const schema = z.object({
   GEMINI_PREVIEW_MODEL: z.string().min(1).optional(),
   GEMINI_DAILY_LIMIT: z.coerce.number().int().positive().default(200),
   SEC_USER_AGENT: z.string().min(1).optional(), // SEC requires a contact UA; feature degrades if absent
+  APP_PASSWORD: z.string().min(1).optional(),     // SP4 gate password; enforced at runtime by middleware
+  SESSION_SECRET: z.string().min(1).optional(),   // SP4 HMAC key for the session cookie
 });
 
 const parsed = schema.safeParse({
@@ -22,6 +24,8 @@ const parsed = schema.safeParse({
   GEMINI_PREVIEW_MODEL: process.env.GEMINI_PREVIEW_MODEL,
   GEMINI_DAILY_LIMIT: process.env.GEMINI_DAILY_LIMIT,
   SEC_USER_AGENT: process.env.SEC_USER_AGENT,
+  APP_PASSWORD: process.env.APP_PASSWORD,
+  SESSION_SECRET: process.env.SESSION_SECRET,
 });
 
 if (!parsed.success) {
