@@ -50,3 +50,26 @@ export function sliceByRange(
     },
   };
 }
+
+// Caps the number of plotted points. Recharts fails to render a line for very large
+// series (e.g. ~5k daily bars over a multi-decade "ALL" range produces an empty path),
+// so we stride-sample down to maxPoints, always keeping the latest bar.
+export function downsample(
+  bars: PriceBar[],
+  ind: SliceableIndicators,
+  maxPoints: number,
+): { bars: PriceBar[]; indicators: SliceableIndicators } {
+  if (bars.length <= maxPoints) return { bars, indicators: ind };
+  const stride = Math.ceil(bars.length / maxPoints);
+  const idx: number[] = [];
+  for (let i = 0; i < bars.length; i += stride) idx.push(i);
+  if (idx[idx.length - 1] !== bars.length - 1) idx.push(bars.length - 1);
+  const pick = <T,>(arr: T[]) => idx.map((i) => arr[i]);
+  return {
+    bars: pick(bars),
+    indicators: {
+      ma20: pick(ind.ma20), ma50: pick(ind.ma50), rsi14: pick(ind.rsi14),
+      macdLine: pick(ind.macdLine), macdSignal: pick(ind.macdSignal), macdHistogram: pick(ind.macdHistogram),
+    },
+  };
+}

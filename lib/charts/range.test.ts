@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rangeStartDate, sliceByRange, type SliceableIndicators } from "./range";
+import { rangeStartDate, sliceByRange, downsample, type SliceableIndicators } from "./range";
 import type { PriceBar } from "@/lib/types";
 
 const bar = (date: string, close: number): PriceBar => ({ date, open: close, high: close, low: close, close, adjClose: null, volume: 0 });
@@ -41,5 +41,25 @@ describe("sliceByRange", () => {
   it("handles empty input", () => {
     const out = sliceByRange([], ind, "1y", "2026-05-22");
     expect(out.bars).toEqual([]);
+  });
+});
+
+describe("downsample", () => {
+  it("returns input unchanged when under the cap", () => {
+    const out = downsample(bars, ind, 800);
+    expect(out.bars).toHaveLength(5);
+  });
+
+  it("caps the point count and always keeps the latest bar", () => {
+    const many = Array.from({ length: 5000 }, (_, i) => bar(`2026-${String((i % 12) + 1).padStart(2, "0")}-01`, i));
+    const manyInd: SliceableIndicators = {
+      ma20: many.map((_, i) => i), ma50: many.map((_, i) => i), rsi14: many.map((_, i) => i),
+      macdLine: many.map((_, i) => i), macdSignal: many.map((_, i) => i), macdHistogram: many.map((_, i) => i),
+    };
+    const out = downsample(many, manyInd, 800);
+    expect(out.bars.length).toBeLessThanOrEqual(801);
+    expect(out.bars.length).toBeGreaterThan(0);
+    expect(out.bars.at(-1)).toEqual(many.at(-1)); // latest preserved
+    expect(out.indicators.ma20).toHaveLength(out.bars.length); // alignment preserved
   });
 });

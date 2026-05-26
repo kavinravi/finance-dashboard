@@ -3,8 +3,10 @@ import { useState } from "react";
 import { PriceChart } from "./price-chart";
 import { RsiChart } from "./rsi-chart";
 import { MacdChart } from "./macd-chart";
-import { sliceByRange, type ChartRange, type SliceableIndicators } from "@/lib/charts/range";
+import { sliceByRange, downsample, type ChartRange, type SliceableIndicators } from "@/lib/charts/range";
 import type { PriceBar } from "@/lib/types";
+
+const MAX_POINTS = 800; // Recharts can't draw a line for ~thousands of points; cap for long ranges.
 
 const PRESETS = [
   { key: "1m", label: "1M" }, { key: "3m", label: "3M" }, { key: "6m", label: "6M" },
@@ -16,7 +18,8 @@ export function TickerCharts({ bars, indicators }: { bars: PriceBar[]; indicator
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const today = new Date().toISOString().slice(0, 10);
-  const sliced = sliceByRange(bars, indicators, range, today);
+  const windowed = sliceByRange(bars, indicators, range, today);
+  const sliced = downsample(windowed.bars, windowed.indicators, MAX_POINTS);
 
   const presetActive = (k: string) => typeof range !== "object" && range === k;
   const btn = (active: boolean) =>
