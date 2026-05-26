@@ -72,7 +72,13 @@ export function MemoCard({ symbol }: { symbol: string }) {
   if (data.status === "unavailable")
     return <p className="text-sm text-neutral-500">Memo unavailable — Gemini key missing or daily limit reached.</p>;
 
-  const m = data.memo!;
+  if (!data.memo)
+    return (
+      <div className="text-sm text-neutral-500">
+        Couldn&apos;t render the memo. <button onClick={() => load(true)} className="underline">Try again</button>
+      </div>
+    );
+  const m = data.memo;
   return (
     <div className="rounded-lg ring-1 ring-neutral-800 p-4">
       <p className="text-base text-neutral-100">{m.one_sentence_takeaway}</p>
