@@ -60,14 +60,15 @@ A deployed, personal investing-**research** dashboard: search a ticker or compan
 - **FMP 250/day budget:** enforce via `provider_state` call counting + aggressive caching.
 - **Yahoo fragility:** treat as fallback only; never the sole source for a page.
 
-## 5. Phasing — four sub-projects
+## 5. Phasing — sub-projects
 
-Each sub-project gets its own spec → plan → build cycle so we never build on an unproven foundation.
+Each sub-project gets its own spec → plan → build cycle so we never build on an unproven foundation. SP1–SP4 are the MVP through first deploy; SP5 is a post-deploy UX-refinement round driven by live-use feedback.
 
 1. **SP1 — Foundation + Search + Prices + Comparison** *(detailed below; build first)*. Usable slice: search "NVIDIA" → NVDA research page with price chart + AMD comparison.
 2. **SP2 — News + Sentiment + Memo:** Finnhub + Yahoo RSS ingestion, dedupe, Gemini News Tone + source-linked daily memo, news table + tone meter + memo UI. *(detailed in §7 below)*
 3. **SP3 — Fundamentals:** SEC EDGAR CIK mapping + CompanyFacts (minimal concepts), fundamentals card. Adds `cik` to `companies`. *(detailed in §8 below)*
 4. **SP4 — Deploy & harden:** Vercel deploy (reusing the existing Neon DB), app-level password gate, provider-health page (reads `provider_state`), opportunistic + manual cache pruning, security hardening. *(detailed in §9 below)*
+5. **SP5 — UX refinements (post-deploy):** cap news volume, split the ticker page into tabbed routes (Charts & Fundamentals / News & Memo), add RSI/MACD charts, add a multi-stock watchlist overlay alongside the existing 2-stock compare. *(detailed in §10 below)*
 
 ---
 
@@ -509,11 +510,69 @@ The assistant can write all code, run a local production build + smoke, generate
 - Unit + integration + E2E suites pass with the gate on; a local production build smoke passes.
 - The app is deployable to a private `*.vercel.app` URL per the §9.9 runbook (account/secret steps performed by the user).
 
-## 10. Out of scope (MVP)
+## 10. SP5 detailed design — UX refinements (post-deploy)
+
+Added after the first Vercel deploy, from live-use feedback. Four changes: cap news volume, split the ticker page into tabbed routes, add RSI/MACD charts, and add a multi-stock watchlist overlay alongside the existing 2-stock compare. No new providers; reuses existing data + the already-computed indicators.
+
+### 10.1 Scope & decisions (locked during brainstorming)
+
+- **News cap = most-recent 10** (within the 7-day window), applied at the query level *and* to the memo's Gemini input (less noise + lower cost).
+- **Ticker page split = separate URLs + a persistent tab bar** (not in-page tabs): `/ticker/[symbol]` (Charts & Fundamentals) + `/ticker/[symbol]/news` (News & Memo) under a shared `layout.tsx`. Chosen for shareable/bookmarkable views and load/cost isolation — the Gemini memo only generates when the News tab is opened.
+- **RSI + MACD charts** on the Charts tab (Recharts, sharing the price date axis).
+- **Watchlist = overlay-only, DB-shared, single global list.** No holdings/$/weights (that would push into the portfolio-advice posture the app avoids); no per-user scoping (single-tenant gated app). Capped at 10 tickers to bound fetch cost.
+- **Compare stays as-is** (2-ticker `/compare`), reachable from the Charts tab's compare form.
+
+**Deferred:** per-user watchlists; holdings/P&L tracking; watchlist reordering/notes; a range selector on the new charts (still full ~2y history per the §6 note); unifying the compare chart with the new overlay chart.
+
+### 10.2 News cap
+
+- `lib/db/articles.ts → getRecentArticles(companyId, sinceIso, limit = 10)` adds `.limit(limit)` (already newest-first).
+- `news-service.getNews` passes the cap; `memo-service` feeds Gemini the same capped set. `NewsTable` is unchanged (renders what it's given).
+
+### 10.3 Tabbed ticker routes + RSI/MACD
+
+- `app/ticker/[symbol]/layout.tsx` — server component: back-link + ticker symbol + a client `TickerTabs` bar (`usePathname` highlights Charts vs News) + `{children}`. No data fetch (symbol from params) → no double-fetch across tabs.
+- `app/ticker/[symbol]/page.tsx` (Charts & Fundamentals) — today's content moved here: header price + `StalenessBadge`, `ReturnsTable`, `PriceChart`, **`RsiChart`**, **`MacdChart`**, the compare form, `FundamentalsCard`. Fetches `getTickerData`.
+- `app/ticker/[symbol]/news/page.tsx` (News & Memo) — `MemoCard` + capped `NewsTable` (SSR via `getNews`). Does **not** call `getTickerData` (no price series needed) → cheap.
+- `price-service`: expose `macdLine` / `macdSignal` / `macdHistogram` in `TickerData.indicators` (today only the histogram is surfaced; `macd()` already returns all three). `rsi14` is already present.
+- `components/rsi-chart.tsx` — Recharts line of `rsi14` over dates, 30/70 reference lines, y-axis 0–100.
+- `components/macd-chart.tsx` — Recharts `macdLine` + `macdSignal` lines + `macdHistogram` bars on a shared date axis.
+- `price-chart`, `returns-table`, `fundamentals-card`, `memo-card`, `news-table` are reused unchanged.
+
+### 10.4 Watchlist (overlay-only, DB-shared)
+
+- **Data model:** new `watchlist` table — `id` uuid PK · `ticker` text **unique** (uppercase) · `createdAt` timestamptz default now. One global list. Migration via `drizzle-kit generate` → applied to Neon.
+- `lib/db/watchlist.ts` — `getWatchlist()`, `addToWatchlist(ticker)` (uppercase, `onConflictDoNothing`), `removeFromWatchlist(ticker)`.
+- `lib/services/watchlist-service.ts → getWatchlistOverlay()`: read tickers (cap 10) → `getTickerData` each → align on the common-date intersection (sorted) → normalize each series to 100 at the first common date → return `{ tickers, dates, series: { ticker, normalized }[] }`. Generalizes `comparison-service`'s normalization to N; a ticker that fails to resolve or has no overlap is skipped (page never crashes).
+- **API** `app/api/watchlist/route.ts` (gated, Node runtime): `GET` → current tickers; `POST {ticker}` (Zod ticker regex, reuse SP1's) → add; `DELETE {ticker}` → remove. Each returns the updated list.
+- **UI** `app/watchlist/page.tsx` (server, `force-dynamic`) — the overlay chart + a client `WatchlistManager` (add-ticker input + ticker chips with remove buttons that call the API and refresh). `components/overlay-chart.tsx` — Recharts multi-line (N normalized series, legend, distinct colors, shared date axis). Empty state: a friendly prompt + the add box.
+- **Nav:** add "Watchlist" to `components/app-nav.tsx`.
+- **Cost note:** each overlay ticker calls `getTickerData` (DB-cache read; a cold/stale ticker may hit FMP once). The 10-ticker cap + existing FMP budget gating bound this.
+
+### 10.5 Error handling — "degrade, never crash"
+
+- Empty watchlist → friendly empty state. A ticker that won't resolve or shares no overlapping dates is dropped from the overlay (not fatal). The news cap doesn't change any degrade path. RSI/MACD lines simply start once their series become non-null (early bars are null by construction).
+
+### 10.6 Testing
+
+- **Unit (Vitest):** `getWatchlistOverlay` N-series normalization + date-intersection (incl. a non-overlapping ticker skipped); news-cap limit honored by `getRecentArticles`.
+- **Integration (live Neon):** `watchlist` repo add/get/remove + uppercase dedupe; `getRecentArticles` returns ≤10 newest.
+- **E2E (Playwright, gated via storageState):** ticker tab navigation (Charts ↔ News URLs); News tab shows ≤10 rows; watchlist add → chip + overlay line appears, remove → gone; RSI/MACD present on the Charts tab. Memo + fundamentals still intercepted by fixtures.
+- **Live smoke + screenshots:** Charts tab (price + RSI + MACD), News tab, and the watchlist overlay with a few real tickers.
+
+### 10.7 SP5 acceptance criteria
+
+- A ticker exposes two bookmarkable views (Charts & Fundamentals / News & Memo) via a persistent tab bar; the memo only generates when the News tab is opened.
+- The Charts tab shows price (with MAs), RSI, and MACD charts plus returns, fundamentals, and the compare entry.
+- The news list and the memo's input are capped at the 10 most-recent articles.
+- A DB-backed watchlist adds/removes tickers and overlays them as normalized lines on one chart (≤10), shared across devices; the 2-stock `/compare` is unchanged.
+- Unit + integration + E2E pass; live smoke + screenshots confirm the charts, tabs, and overlay render.
+
+## 11. Out of scope (MVP)
 
 Per `plan.md` non-goals: no scraping of paywalled article bodies, no trading execution, no portfolio optimization, no public redistribution of provider data, no delisted-company database, no buy/sell/hold output. Also out of scope for the MVP specifically: local FinBERT, a separate Python service, Alpha Vantage, paid data tiers, and a background scheduler.
 
-## 11. Assumptions
+## 12. Assumptions
 
 - Personal/non-commercial use; app stays private behind a password gate.
 - US-listed securities (FMP free is US-only; SEC is US-only).
