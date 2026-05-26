@@ -1,6 +1,6 @@
 import { db } from "./client";
 import { providerState } from "./schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 function nextResetAt(): Date {
   const d = new Date();
@@ -25,13 +25,13 @@ async function ensureRow(provider: string, dailyLimit: number) {
 
 export async function canCall(provider: string, dailyLimit: number): Promise<boolean> {
   const row = await ensureRow(provider, dailyLimit);
-  return row.callsToday < dailyLimit;
+  return (row?.callsToday ?? 0) < dailyLimit;
 }
 
 export async function recordSuccess(provider: string, dailyLimit: number): Promise<void> {
-  const row = await ensureRow(provider, dailyLimit);
+  await ensureRow(provider, dailyLimit);
   await db.update(providerState)
-    .set({ callsToday: row.callsToday + 1, lastSuccessAt: new Date() })
+    .set({ callsToday: sql`${providerState.callsToday} + 1`, lastSuccessAt: new Date() })
     .where(eq(providerState.provider, provider));
 }
 
