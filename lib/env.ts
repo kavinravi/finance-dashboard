@@ -9,6 +9,7 @@ const schema = z.object({
   GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash"),
   GEMINI_PREVIEW_MODEL: z.string().min(1).optional(),
   GEMINI_DAILY_LIMIT: z.coerce.number().int().positive().default(200),
+  SEC_USER_AGENT: z.string().min(1).optional(), // SEC requires a contact UA; feature degrades if absent
 });
 
 const parsed = schema.safeParse({
@@ -20,6 +21,7 @@ const parsed = schema.safeParse({
   GEMINI_MODEL: process.env.GEMINI_MODEL,
   GEMINI_PREVIEW_MODEL: process.env.GEMINI_PREVIEW_MODEL,
   GEMINI_DAILY_LIMIT: process.env.GEMINI_DAILY_LIMIT,
+  SEC_USER_AGENT: process.env.SEC_USER_AGENT,
 });
 
 if (!parsed.success) {
