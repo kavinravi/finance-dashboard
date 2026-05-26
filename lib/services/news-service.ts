@@ -1,5 +1,5 @@
 import { getCompanyByTicker } from "@/lib/db/companies";
-import { upsertArticles, getRecentArticles, newestArticleCreatedAt, type ArticleRow } from "@/lib/db/articles";
+import { upsertArticles, getRecentArticles, newestArticleCreatedAt, pruneExpiredForCompany, type ArticleRow } from "@/lib/db/articles";
 import { finnhub } from "@/lib/providers/finnhub";
 import { yahooRss } from "@/lib/providers/yahoo-rss";
 import { dedupeArticles } from "@/lib/news/dedupe";
@@ -31,6 +31,7 @@ export async function getNews(
       yahooRss.companyNews(company.ticker),
     ]);
     await upsertArticles(company.id, dedupeArticles([...fh, ...yr]));
+    await pruneExpiredForCompany(company.id).catch(() => 0); // best-effort; never break the news path
   }
 
   const rows = await getRecentArticles(company.id, isoDaysAgo(LOOKBACK_DAYS));

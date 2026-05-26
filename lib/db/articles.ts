@@ -1,6 +1,6 @@
 import { db } from "./client";
 import { articles } from "./schema";
-import { and, eq, gte, gt, desc, inArray } from "drizzle-orm";
+import { and, eq, gte, gt, desc, inArray, lt } from "drizzle-orm";
 import { urlHash } from "@/lib/news/dedupe";
 import type { NewsArticle } from "@/lib/types";
 
@@ -42,4 +42,11 @@ export async function hasArticleNewerThan(companyId: string, t: Date): Promise<b
 export async function getArticlesByIds(ids: string[]): Promise<ArticleRow[]> {
   if (ids.length === 0) return [];
   return db.select().from(articles).where(inArray(articles.id, ids));
+}
+
+export async function pruneExpiredForCompany(companyId: string, now: Date = new Date()): Promise<number> {
+  const r = await db.delete(articles)
+    .where(and(eq(articles.companyId, companyId), lt(articles.expiresAt, now)))
+    .returning({ id: articles.id });
+  return r.length;
 }

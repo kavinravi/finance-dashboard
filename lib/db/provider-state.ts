@@ -41,3 +41,9 @@ export async function recordError(provider: string, dailyLimit: number, message:
     .set({ lastErrorAt: new Date(), lastError: message })
     .where(eq(providerState.provider, provider));
 }
+
+export type ProviderStateRow = typeof providerState.$inferSelect;
+
+export async function getAllProviderStates(): Promise<ProviderStateRow[]> {
+  return db.select().from(providerState).orderBy(providerState.provider);
+}
