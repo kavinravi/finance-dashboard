@@ -90,3 +90,9 @@ export const companyFundamentals = pgTable("company_fundamentals", {
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 }, (t) => [unique("uq_fundamentals_company").on(t.companyId)]);
+
+export const watchlist = pgTable("watchlist", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ticker: text("ticker").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
