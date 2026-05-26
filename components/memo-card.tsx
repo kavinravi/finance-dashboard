@@ -24,11 +24,12 @@ function Chips({ ids, cited }: { ids: string[]; cited: CitedArticle[] }) {
   );
 }
 
-function Group({ title, items, cited }: { title: string; items: Development[]; cited: CitedArticle[] }) {
+function Group({ title, items, cited, tone }: { title: string; items: Development[]; cited: CitedArticle[]; tone: "bullish" | "bearish" | "neutral" }) {
   if (items.length === 0) return null;
+  const titleColor = tone === "bullish" ? "text-emerald-400" : tone === "bearish" ? "text-red-400" : "text-neutral-500";
   return (
     <div className="mt-4">
-      <h3 className="text-xs font-medium uppercase text-neutral-500">{title}</h3>
+      <h3 className={`text-xs font-medium uppercase ${titleColor}`}>{title}</h3>
       <ul className="mt-1 space-y-2">
         {items.map((d, i) => (
           <li key={i} className="text-sm">
@@ -83,9 +84,9 @@ export function MemoCard({ symbol }: { symbol: string }) {
     <div className="rounded-lg ring-1 ring-neutral-800 p-4">
       <p className="text-base text-neutral-100">{m.one_sentence_takeaway}</p>
       <ToneMeter label={m.overall_news_tone.label} score={m.overall_news_tone.score} />
-      <Group title="Bullish" items={m.bullish_developments} cited={data.citedArticles} />
-      <Group title="Bearish" items={m.bearish_developments} cited={data.citedArticles} />
-      <Group title="Neutral / operational" items={m.neutral_or_operational_updates} cited={data.citedArticles} />
+      <Group title="Bullish" items={m.bullish_developments} cited={data.citedArticles} tone="bullish" />
+      <Group title="Bearish" items={m.bearish_developments} cited={data.citedArticles} tone="bearish" />
+      <Group title="Neutral / operational" items={m.neutral_or_operational_updates} cited={data.citedArticles} tone="neutral" />
       {m.watch_items.length > 0 && (
         <div className="mt-4">
           <h3 className="text-xs font-medium uppercase text-neutral-500">Watch items</h3>
