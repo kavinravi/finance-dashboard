@@ -62,7 +62,7 @@ const SHAPE_EXAMPLE = {
   bullish_developments: [{ claim: "string", why_it_matters: "string", source_article_ids: ["a1"], confidence: "low|medium|high" }],
   bearish_developments: [], neutral_or_operational_updates: [],
   watch_items: ["string"], caveats: ["string"],
-  overall_news_tone: { label: "bearish|somewhat_bearish|neutral|somewhat_bullish|bullish", score: 0, rationale: "string" },
+  overall_news_tone: { label: "bearish|somewhat_bearish|neutral|somewhat_bullish|bullish", score: 50, rationale: "string" },
 };
 
 function pct(v: number | null): string {
@@ -81,6 +81,7 @@ export function buildPrompt(input: MemoInput): string {
     `- Separate confirmed company events from analyst speculation.`,
     `- If evidence is thin, duplicated, or stale, say so in caveats, lower confidence, and return mostly-empty arrays.`,
     `- overall_news_tone reflects the tone of COVERAGE, not a stock forecast; rationale must reference the actual articles.`,
+    `- overall_news_tone.score MUST be an INTEGER from 0 to 100 on this scale: 0-30 bearish, 31-45 somewhat bearish, 46-55 neutral, 56-70 somewhat bullish, 71-100 bullish. The score MUST be consistent with the label (e.g. a "somewhat_bullish" label needs a score in 56-70). Do NOT use a 0-1 scale.`,
     ``,
     `Price context (factual; do NOT speculate on causation): latest close ${pc.latestClose ?? "n/a"} ${pc.currency ?? ""}; returns 1D ${pct(pc.returns.d1)}, 5D ${pct(pc.returns.d5)}, 1M ${pct(pc.returns.m1)}, 1Y ${pct(pc.returns.y1)}.`,
     ``,

@@ -50,5 +50,6 @@ describe("buildPrompt", () => {
     expect(p).toContain("[a1]");
     expect(p).toContain("[a2]");
     expect(p.toLowerCase()).toContain("never output buy");
+    expect(p).toContain("0 to 100");
   });
 });
