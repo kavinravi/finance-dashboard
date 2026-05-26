@@ -15,6 +15,13 @@
       "when": 1779768311140,
       "tag": "0001_daily_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779777926254,
+      "tag": "0002_nostalgic_ego",
+      "breakpoints": true
     }
   ]
 }

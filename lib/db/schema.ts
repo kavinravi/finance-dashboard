@@ -11,6 +11,7 @@ export const companies = pgTable("companies", {
   sector: text("sector"),
   industry: text("industry"),
   currency: text("currency"),
+  cik: text("cik"), // SEC CIK, 10-digit zero-padded; resolved once, reused
   lastProfileRefreshAt: timestamp("last_profile_refresh_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -75,3 +76,17 @@ export const providerState = pgTable("provider_state", {
   lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
   lastError: text("last_error"),
 });
+
+export const companyFundamentals = pgTable("company_fundamentals", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  companyId: uuid("company_id").notNull().references(() => companies.id),
+  conceptsJson: jsonb("concepts_json").notNull(),
+  fiscalYear: integer("fiscal_year"),
+  incomePeriodEnd: date("income_period_end"),
+  balanceSheetAsOf: date("balance_sheet_as_of"),
+  filingForm: text("filing_form"),
+  filedAt: date("filed_at"),
+  source: text("source").notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (t) => [unique("uq_fundamentals_company").on(t.companyId)]);
