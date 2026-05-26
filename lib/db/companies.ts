@@ -23,3 +23,7 @@ export async function upsertCompany(p: CompanyProfile): Promise<CompanyRow> {
     });
   return (await getCompanyByTicker(ticker))!;
 }
+
+export async function setCik(companyId: string, cik: string): Promise<void> {
+  await db.update(companies).set({ cik, updatedAt: new Date() }).where(eq(companies.id, companyId));
+}
