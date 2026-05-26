@@ -34,8 +34,29 @@ test("ticker page renders the news section and a memo from an intercepted respon
     }),
   );
 
+  await page.route("**/api/fundamentals/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "ok",
+        source: "sec_edgar",
+        asOf: { fiscalYear: 2024, incomePeriodEnd: "2024-09-28", balanceSheetAsOf: "2024-12-28", filingForm: "10-K", filedAt: "2024-11-01", edgarUrl: "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0000320193&type=10-K" },
+        view: {
+          marketCap: 3420000000000, peRatio: 28.41, psRatio: 8.7, grossMargin: 0.462, roe: 1.5, roa: 0.28,
+          operatingIncome: 123216000000, currentRatio: 0.92, debtToEquity: 4.15,
+          assets: 364980000000, liabilities: 308030000000, equity: 56950000000,
+          revenue: 391035000000, netIncome: 93736000000, eps: 6.08,
+        },
+      }),
+    }),
+  );
+
   await page.goto("/ticker/NVDA");
   await expect(page.getByText("Fixture takeaway for NVDA.")).toBeVisible();
   await expect(page.getByText(/News Tone/).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent news" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Fundamentals" })).toBeVisible();
+  await expect(page.getByText("Market Cap")).toBeVisible();
+  await expect(page.getByText("$3.42T")).toBeVisible();
 });
