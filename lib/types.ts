@@ -37,3 +37,14 @@ export type PeriodReturns = {
   ytd: number | null;
   oneYear: number | null;
 };
+
+export type NewsArticle = {
+  source: "finnhub" | "yahoo_rss";
+  sourceArticleId: string | null;
+  url: string;
+  title: string;
+  summary: string | null;
+  publishedAt: Date;
+  imageUrl: string | null;
+  related: string | null; // comma-joined tickers (Finnhub); null for RSS
+};
