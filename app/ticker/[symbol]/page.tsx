@@ -5,6 +5,7 @@ import { ReturnsTable } from "@/components/returns-table";
 import { PriceChart } from "@/components/price-chart";
 import { StalenessBadge } from "@/components/staleness-badge";
 import { NewsTable } from "@/components/news-table";
+import { MemoCard } from "@/components/memo-card";
 import { formatPrice } from "@/lib/formatters";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,12 @@ export default async function TickerPage({ params }: { params: Promise<{ symbol:
           className="rounded bg-neutral-900 px-2 py-1 font-mono uppercase ring-1 ring-neutral-800" />
         <button className="rounded bg-neutral-200 px-3 py-1 text-sm font-medium text-neutral-900">Go</button>
       </form>
+
+      <section className="mt-10">
+        <h2 className="text-sm font-medium text-neutral-400">Daily memo</h2>
+        <p className="mb-2 text-xs text-neutral-600">Research assistant, not investment advice.</p>
+        <MemoCard symbol={data.ticker} />
+      </section>
 
       <section className="mt-10">
         <h2 className="text-sm font-medium text-neutral-400">Recent news</h2>
