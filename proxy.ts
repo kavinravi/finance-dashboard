@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { shouldAllow } from "@/lib/auth/gate";
 import { verifySessionToken, SESSION_COOKIE } from "@/lib/auth/session";
+import { needsProfileSelection, PROFILE_COOKIE } from "@/lib/auth/profile-gate";
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -18,7 +19,16 @@ export async function proxy(req: NextRequest) {
     onVercel: Boolean(process.env.VERCEL),
   });
 
-  if (decision.allow) return NextResponse.next();
+  if (decision.allow) {
+    const hasProfile = Boolean(req.cookies.get(PROFILE_COOKIE)?.value);
+    if (needsProfileSelection(pathname, hasProfile)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/select-profile";
+      url.search = `?next=${encodeURIComponent(pathname)}`;
+      return NextResponse.redirect(url);
+    }
+    return NextResponse.next();
+  }
 
   if (decision.reason === "misconfig") {
     return new NextResponse("App is not configured: APP_PASSWORD/SESSION_SECRET missing.", { status: 503 });
