@@ -17,10 +17,11 @@ test("wrong password shows an error and stays on /login", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("correct password signs in and lands on the homepage", async ({ page }) => {
+test("correct password signs in and lands on the profile picker (then homepage after selection)", async ({ page }) => {
   await page.goto("/login?next=%2F");
   await page.getByLabel(/password/i).fill(E2E_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL("http://localhost:3000/");
-  await expect(page.getByPlaceholder(/Search ticker/i)).toBeVisible();
+  // After login with no active profile, the profile gate redirects to /select-profile.
+  await expect(page).toHaveURL(/\/select-profile/);
+  await expect(page.getByRole("heading", { name: /who.s looking/i })).toBeVisible();
 });
