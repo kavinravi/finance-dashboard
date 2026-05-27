@@ -64,8 +64,9 @@ export const dailyMemos = pgTable("daily_memos", {
   toneScore: integer("tone_score").notNull(),
   sourceArticleIds: jsonb("source_article_ids").notNull(),
   basedOnArticleCount: integer("based_on_article_count").notNull(),
+  lookbackDays: integer("lookback_days").notNull(),
   generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
-}, (t) => [unique("uq_memo_company_date").on(t.companyId, t.memoDate)]);
+}, (t) => [unique("uq_memo_company_date_lookback").on(t.companyId, t.memoDate, t.lookbackDays)]);
 
 export const providerState = pgTable("provider_state", {
   provider: text("provider").primaryKey(),       // "fmp" | "yahoo"

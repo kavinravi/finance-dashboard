@@ -6,13 +6,13 @@ import { getRecentArticles, hasArticleNewerThan, getArticlesByIds, type ArticleR
 import { getMemoForDate, upsertMemo } from "@/lib/db/daily-memos";
 import { canCall } from "@/lib/db/provider-state";
 import { generateMemo, type MemoInput, type MemoOutput } from "@/lib/providers/gemini";
+import { DEFAULT_WINDOW } from "@/lib/news/windows";
 
 export type MemoStatus = "ok" | "no_news" | "unavailable" | "error";
 export type CitedArticle = { id: string; title: string; url: string; source: string };
 export type MemoView = MemoOutput & { generatedAt: string; model: string; basedOnArticleCount: number };
 export type MemoResult = { status: MemoStatus; memo: MemoView | null; citedArticles: CitedArticle[] };
 
-const LOOKBACK_DAYS = 7;
 const todayIso = () => new Date().toISOString().slice(0, 10);
 function isoDaysAgo(n: number): string {
   const d = new Date();
@@ -33,13 +33,14 @@ function view(memo: MemoOutput, generatedAt: Date, model: string, count: number)
   return { ...memo, generatedAt: generatedAt.toISOString(), model, basedOnArticleCount: count };
 }
 
-export async function getMemo(ticker: string, opts: { force?: boolean } = {}): Promise<MemoResult> {
+export async function getMemo(ticker: string, opts: { force?: boolean; lookbackDays?: number } = {}): Promise<MemoResult> {
+  const lookbackDays = opts.lookbackDays ?? DEFAULT_WINDOW;
   const priceData = await getTickerData(ticker, "1y"); // ensures the company exists + price context
   const company = await getCompanyByTicker(ticker);
   if (!company) return { status: "no_news", memo: null, citedArticles: [] };
   const today = todayIso();
 
-  const cached = await getMemoForDate(company.id, today);
+  const cached = await getMemoForDate(company.id, today, lookbackDays);
   if (cached && !opts.force && !(await hasArticleNewerThan(company.id, cached.generatedAt))) {
     const memo = cached.summaryJson as MemoOutput;
     return {
@@ -50,7 +51,7 @@ export async function getMemo(ticker: string, opts: { force?: boolean } = {}): P
   }
 
   await getNews(ticker, { force: opts.force });
-  const rows = await getRecentArticles(company.id, isoDaysAgo(LOOKBACK_DAYS), 10);
+  const rows = await getRecentArticles(company.id, isoDaysAgo(lookbackDays), 10);
   if (rows.length === 0) return { status: "no_news", memo: null, citedArticles: [] };
 
   if (!env.GEMINI_API_KEY || !(await canCall("gemini", env.GEMINI_DAILY_LIMIT))) {
@@ -103,7 +104,7 @@ export async function getMemo(ticker: string, opts: { force?: boolean } = {}): P
   )];
 
   await upsertMemo({
-    companyId: company.id, memoDate: today, model: env.GEMINI_MODEL, summaryJson: resolved,
+    companyId: company.id, memoDate: today, lookbackDays, model: env.GEMINI_MODEL, summaryJson: resolved,
     toneLabel: resolved.overall_news_tone.label, toneScore: resolved.overall_news_tone.score,
     sourceArticleIds: citedIds, basedOnArticleCount: rows.length,
   });

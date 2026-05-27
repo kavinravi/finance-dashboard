@@ -1,6 +1,7 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ToneMeter } from "@/components/tone-meter";
+import { NEWS_WINDOWS, DEFAULT_WINDOW } from "@/lib/news/windows";
 import type { MemoResult, CitedArticle } from "@/lib/services/memo-service";
 
 type Development = { claim: string; why_it_matters: string; source_article_ids: string[]; confidence: string };
@@ -47,64 +48,88 @@ function Group({ title, items, cited, tone }: { title: string; items: Developmen
 export function MemoCard({ symbol }: { symbol: string }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<MemoResult | null>(null);
+  const [days, setDays] = useState<number>(DEFAULT_WINDOW);
 
   const load = useCallback(async (force: boolean) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/memo/${symbol}${force ? "?force=1" : ""}`);
+      const res = await fetch(`/api/memo/${symbol}?days=${days}${force ? "&force=1" : ""}`);
       setData(await res.json());
     } catch {
       setData({ status: "error", memo: null, citedArticles: [] });
     } finally {
       setLoading(false);
     }
-  }, [symbol]);
+  }, [symbol, days]);
 
   useEffect(() => { void load(false); }, [load]);
 
-  if (loading) return <p className="text-sm text-neutral-500">Generating today&apos;s memo…</p>;
-  if (!data || data.status === "error")
-    return (
+  const windowToggle = (
+    <div className="mb-2 flex items-center gap-1 text-xs">
+      <span className="mr-1 text-neutral-500">News window:</span>
+      {NEWS_WINDOWS.map((w) => (
+        <button key={w} onClick={() => setDays(w)}
+          className={`rounded px-2 py-0.5 ${days === w ? "bg-neutral-200 text-neutral-900" : "bg-neutral-900 text-neutral-300 ring-1 ring-neutral-800 hover:bg-neutral-800"}`}>
+          {w}d
+        </button>
+      ))}
+    </div>
+  );
+
+  let body: ReactNode;
+  if (loading) {
+    body = <p className="text-sm text-neutral-500">Generating today&apos;s memo…</p>;
+  } else if (!data || data.status === "error") {
+    body = (
       <div className="text-sm text-neutral-500">
         Couldn&apos;t generate the memo. <button onClick={() => load(true)} className="underline">Try again</button>
       </div>
     );
-  if (data.status === "no_news") return <p className="text-sm text-neutral-500">No recent news in the last 7 days.</p>;
-  if (data.status === "unavailable")
-    return <p className="text-sm text-neutral-500">Memo unavailable — Gemini key missing or daily limit reached.</p>;
-
-  if (!data.memo)
-    return (
+  } else if (data.status === "no_news") {
+    body = <p className="text-sm text-neutral-500">No recent news in the last {days} day{days === 1 ? "" : "s"}.</p>;
+  } else if (data.status === "unavailable") {
+    body = <p className="text-sm text-neutral-500">Memo unavailable — Gemini key missing or daily limit reached.</p>;
+  } else if (!data.memo) {
+    body = (
       <div className="text-sm text-neutral-500">
         Couldn&apos;t render the memo. <button onClick={() => load(true)} className="underline">Try again</button>
       </div>
     );
-  const m = data.memo;
-  return (
-    <div className="rounded-lg ring-1 ring-neutral-800 p-4">
-      <p className="text-base text-neutral-100">{m.one_sentence_takeaway}</p>
-      <ToneMeter label={m.overall_news_tone.label} score={m.overall_news_tone.score} />
-      <Group title="Bullish" items={m.bullish_developments} cited={data.citedArticles} tone="bullish" />
-      <Group title="Bearish" items={m.bearish_developments} cited={data.citedArticles} tone="bearish" />
-      <Group title="Neutral / operational" items={m.neutral_or_operational_updates} cited={data.citedArticles} tone="neutral" />
-      {m.watch_items.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-xs font-medium uppercase text-neutral-500">Watch items</h3>
-          <ul className="mt-1 list-disc pl-5 text-sm text-neutral-300">{m.watch_items.map((w, i) => <li key={i}>{w}</li>)}</ul>
+  } else {
+    const m = data.memo;
+    body = (
+      <div className="rounded-lg ring-1 ring-neutral-800 p-4">
+        <p className="text-base text-neutral-100">{m.one_sentence_takeaway}</p>
+        <ToneMeter label={m.overall_news_tone.label} score={m.overall_news_tone.score} />
+        <Group title="Bullish" items={m.bullish_developments} cited={data.citedArticles} tone="bullish" />
+        <Group title="Bearish" items={m.bearish_developments} cited={data.citedArticles} tone="bearish" />
+        <Group title="Neutral / operational" items={m.neutral_or_operational_updates} cited={data.citedArticles} tone="neutral" />
+        {m.watch_items.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-xs font-medium uppercase text-neutral-500">Watch items</h3>
+            <ul className="mt-1 list-disc pl-5 text-sm text-neutral-300">{m.watch_items.map((w, i) => <li key={i}>{w}</li>)}</ul>
+          </div>
+        )}
+        {m.caveats.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-xs font-medium uppercase text-neutral-500">Caveats</h3>
+            <ul className="mt-1 list-disc pl-5 text-sm text-neutral-400">{m.caveats.map((c, i) => <li key={i}>{c}</li>)}</ul>
+          </div>
+        )}
+        <div className="mt-4 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-600">
+          <span>
+            Generated by {m.model} from {m.basedOnArticleCount} sources over the last {days}d · every claim links to its source · News Tone reflects coverage tone, not a forecast · not investment advice.
+          </span>
+          <button onClick={() => load(true)} className="ml-3 shrink-0 underline">Regenerate</button>
         </div>
-      )}
-      {m.caveats.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-xs font-medium uppercase text-neutral-500">Caveats</h3>
-          <ul className="mt-1 list-disc pl-5 text-sm text-neutral-400">{m.caveats.map((c, i) => <li key={i}>{c}</li>)}</ul>
-        </div>
-      )}
-      <div className="mt-4 flex items-center justify-between border-t border-neutral-800 pt-2 text-xs text-neutral-600">
-        <span>
-          Generated by {m.model} from {m.basedOnArticleCount} sources · every claim links to its source · News Tone reflects coverage tone, not a forecast · not investment advice.
-        </span>
-        <button onClick={() => load(true)} className="ml-3 shrink-0 underline">Regenerate</button>
       </div>
+    );
+  }
+
+  return (
+    <div>
+      {windowToggle}
+      {body}
     </div>
   );
 }

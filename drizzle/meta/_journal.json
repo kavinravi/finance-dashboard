@@ -36,6 +36,13 @@
       "when": 1779844581997,
       "tag": "0004_orange_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779857859903,
+      "tag": "0005_bright_george_stacy",
+      "breakpoints": true
     }
   ]
 }
