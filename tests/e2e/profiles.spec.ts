@@ -36,3 +36,23 @@ test("watchlist is isolated per profile", async ({ page }) => {
   // Cleanup: deleting the iso profile cascades its watchlist (QQ).
   await page.request.delete(`/api/profiles/${isoId}`);
 });
+
+test("deleting the active profile recovers gracefully (no stale-cookie 500)", async ({ page }) => {
+  const uniq = `del${Date.now() % 100000}`;
+  // create a profile and make it the active one
+  const created = await (await page.request.post("/api/profiles", { data: { name: uniq } })).json();
+  const id: string = created.profile.id;
+  await page.request.post("/api/profile/select", { data: { id } });
+
+  // delete the currently-active profile → cookie is now stale
+  await page.request.delete(`/api/profiles/${id}`);
+
+  // a profile-scoped page must NOT 500; it should send us to the picker
+  await page.goto("/watchlist");
+  await expect(page).toHaveURL(/\/select-profile/);
+  await expect(page.getByRole("heading", { name: /who.s looking/i })).toBeVisible();
+
+  // and the watchlist API returns 409 (not 500) for the stale cookie
+  const res = await page.request.post("/api/watchlist", { data: { ticker: "QQ" } });
+  expect(res.status()).toBe(409);
+});
