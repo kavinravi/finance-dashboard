@@ -91,8 +91,15 @@ export const companyFundamentals = pgTable("company_fundamentals", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 }, (t) => [unique("uq_fundamentals_company").on(t.companyId)]);
 
-export const watchlist = pgTable("watchlist", {
+export const profiles = pgTable("profiles", {
   id: uuid("id").primaryKey().defaultRandom(),
-  ticker: text("ticker").notNull().unique(),
+  name: text("name").notNull().unique(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const watchlist = pgTable("watchlist", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  ticker: text("ticker").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [unique("uq_watchlist_profile_ticker").on(t.profileId, t.ticker)]);
