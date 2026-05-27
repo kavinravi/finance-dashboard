@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SearchResult } from "@/lib/types";
 
@@ -8,6 +8,16 @@ export function SearchBar() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Dismiss the results dropdown when clicking outside the search box.
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setResults([]);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   async function run(e: React.FormEvent) {
     e.preventDefault();
@@ -22,11 +32,18 @@ export function SearchBar() {
     }
   }
 
+  function select(symbol: string) {
+    setResults([]); // clear the dropdown before navigating so it doesn't linger on the next page
+    setQ("");
+    router.push(`/ticker/${symbol}`);
+  }
+
   return (
-    <div className="relative w-full max-w-xl">
+    <div ref={ref} className="relative w-full max-w-xl">
       <form onSubmit={run} className="flex gap-2">
         <input
           value={q} onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") setResults([]); }}
           placeholder="Search ticker or company (e.g. NVDA, NVIDIA)"
           className="flex-1 rounded bg-neutral-900 px-3 py-2 outline-none ring-1 ring-neutral-800 focus:ring-neutral-600"
         />
@@ -39,7 +56,7 @@ export function SearchBar() {
           {results.slice(0, 8).map((r) => (
             <li key={`${r.symbol}-${r.source}`}>
               <button
-                onClick={() => router.push(`/ticker/${r.symbol}`)}
+                onClick={() => select(r.symbol)}
                 className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-800"
               >
                 <span><span className="font-mono font-semibold">{r.symbol}</span> · {r.name}</span>
