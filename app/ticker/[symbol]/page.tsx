@@ -33,7 +33,7 @@ export default async function TickerChartsPage({ params }: { params: Promise<{ s
         <TickerCharts
           bars={data.bars}
           indicators={{
-            ma20: data.indicators.ma20, ma50: data.indicators.ma50, rsi14: data.indicators.rsi14,
+            ma20: data.indicators.ma20, ma50: data.indicators.ma50, ma200: data.indicators.ma200, rsi14: data.indicators.rsi14,
             macdLine: data.indicators.macdLine, macdSignal: data.indicators.macdSignal, macdHistogram: data.indicators.macdHistogram,
           }}
         />
