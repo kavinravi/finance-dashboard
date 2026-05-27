@@ -6,7 +6,7 @@ const T = `ZZ${Date.now() % 100000}`; // short, regex-valid, uppercase
 let profileId: string;
 
 beforeAll(async () => { profileId = (await createProfile(`wl-${Date.now()}`)).id; });
-afterAll(async () => { await deleteProfile(profileId); }); // cascade removes its watchlist rows
+afterAll(async () => { if (profileId) await deleteProfile(profileId); }); // cascade removes its watchlist rows
 
 describe("watchlist repo (integration, live Neon)", () => {
   it("adds (uppercased), lists, dedupes, and removes — scoped to a profile", async () => {
