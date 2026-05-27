@@ -26,9 +26,10 @@ export function ProfileSwitcher() {
   }, []);
 
   async function switchTo(id: string) {
-    await fetch("/api/profile/select", {
+    const res = await fetch("/api/profile/select", {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }),
     });
+    if (!res.ok) return; // selection failed (e.g. profile deleted elsewhere); keep current view
     window.location.reload(); // re-scope server-rendered data to the new profile
   }
 
@@ -36,7 +37,7 @@ export function ProfileSwitcher() {
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="rounded px-2 py-1 text-neutral-300 ring-1 ring-neutral-800 hover:text-white">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" className="rounded px-2 py-1 text-neutral-300 ring-1 ring-neutral-800 hover:text-white">
         {active ? active.name : "Profile"} ▾
       </button>
       {open && (
