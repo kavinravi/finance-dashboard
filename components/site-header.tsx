@@ -2,10 +2,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SearchBar } from "./search-bar";
+import { ProfileSwitcher } from "./profile-switcher";
 
 export function SiteHeader() {
   const pathname = usePathname();
-  if (pathname === "/login") return null;
+  if (pathname === "/login" || pathname === "/select-profile") return null;
   const showSearch = pathname !== "/";
 
   async function logout() {
@@ -20,6 +21,7 @@ export function SiteHeader() {
         <Link href="/" className="text-neutral-300 hover:text-white">Home</Link>
         <Link href="/watchlist" className="text-neutral-300 hover:text-white">Watchlist</Link>
         <Link href="/health" className="text-neutral-300 hover:text-white">Health</Link>
+        <ProfileSwitcher />
         <button onClick={logout} className="text-neutral-300 hover:text-white">Log out</button>
       </nav>
     </header>
