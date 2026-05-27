@@ -9,7 +9,7 @@ export function RsiChart({ bars, rsi14 }: Props) {
   return (
     <div className="h-40 w-full">
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <LineChart data={data} syncId="ticker" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="#262626" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#737373" }} minTickGap={48} />
           <YAxis domain={[0, 100]} ticks={[0, 30, 70, 100]} tick={{ fontSize: 10, fill: "#737373" }} width={48} />

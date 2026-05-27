@@ -9,7 +9,7 @@ export function MacdChart({ bars, macdLine, macdSignal, macdHistogram }: Props) 
   return (
     <div className="h-40 w-full">
       <ResponsiveContainer>
-        <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <ComposedChart data={data} syncId="ticker" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="#262626" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#737373" }} minTickGap={48} />
           <YAxis tick={{ fontSize: 10, fill: "#737373" }} width={48} />

@@ -19,7 +19,7 @@ export function PriceChart({ bars, ma20, ma50, ma200, visible }: Props) {
   return (
     <div className="h-80 w-full">
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <LineChart data={data} syncId="ticker" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="#262626" vertical={false} />
           <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#737373" }} minTickGap={48} />
           <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#737373" }} width={48} />
