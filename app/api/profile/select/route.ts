@@ -5,6 +5,7 @@ import { safeNextPath } from "@/lib/auth/session";
 import { PROFILE_COOKIE } from "@/lib/auth/profile-gate";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const schema = z.object({ id: z.string().uuid(), next: z.string().optional() });
 
