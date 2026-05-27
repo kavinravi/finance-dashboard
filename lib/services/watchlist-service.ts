@@ -4,8 +4,8 @@ import { buildOverlay, type Overlay, type OverlayInput } from "./watchlist-overl
 
 const MAX_TICKERS = 10;
 
-export async function getWatchlistOverlay(): Promise<{ tickers: string[]; overlay: Overlay }> {
-  const rows = await getWatchlist();
+export async function getWatchlistOverlay(profileId: string): Promise<{ tickers: string[]; overlay: Overlay }> {
+  const rows = await getWatchlist(profileId);
   const tickers = rows.slice(0, MAX_TICKERS).map((r) => r.ticker);
   if (tickers.length === 0) return { tickers: [], overlay: { dates: [], series: [] } };
 
