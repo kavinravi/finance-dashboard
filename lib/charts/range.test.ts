@@ -9,7 +9,7 @@ const bars: PriceBar[] = [
   bar("2026-05-18", 10), bar("2026-05-19", 11), bar("2026-05-20", 12), bar("2026-05-21", 13), bar("2026-05-22", 14),
 ];
 const ind: SliceableIndicators = {
-  ma20: [1, 2, 3, 4, 5], ma50: [1, 2, 3, 4, 5], rsi14: [1, 2, 3, 4, 5],
+  ma20: [1, 2, 3, 4, 5], ma50: [1, 2, 3, 4, 5], ma200: [1, 2, 3, 4, 5], rsi14: [1, 2, 3, 4, 5],
   macdLine: [1, 2, 3, 4, 5], macdSignal: [1, 2, 3, 4, 5], macdHistogram: [1, 2, 3, 4, 5],
 };
 
@@ -31,6 +31,7 @@ describe("sliceByRange", () => {
     const out = sliceByRange(bars, ind, { from: "2026-05-19", to: "2026-05-21" }, "2026-05-22");
     expect(out.bars.map((b) => b.date)).toEqual(["2026-05-19", "2026-05-20", "2026-05-21"]);
     expect(out.indicators.ma20).toEqual([2, 3, 4]);
+    expect(out.indicators.ma200).toEqual([2, 3, 4]);
     expect(out.indicators.macdHistogram).toEqual([2, 3, 4]);
   });
   it("returns everything for 'all'", () => {
@@ -53,7 +54,7 @@ describe("downsample", () => {
   it("caps the point count and always keeps the latest bar", () => {
     const many = Array.from({ length: 5000 }, (_, i) => bar(`2026-${String((i % 12) + 1).padStart(2, "0")}-01`, i));
     const manyInd: SliceableIndicators = {
-      ma20: many.map((_, i) => i), ma50: many.map((_, i) => i), rsi14: many.map((_, i) => i),
+      ma20: many.map((_, i) => i), ma50: many.map((_, i) => i), ma200: many.map((_, i) => i), rsi14: many.map((_, i) => i),
       macdLine: many.map((_, i) => i), macdSignal: many.map((_, i) => i), macdHistogram: many.map((_, i) => i),
     };
     const out = downsample(many, manyInd, 800);

@@ -15,7 +15,7 @@ export type TickerData = {
   bars: PriceBar[];
   returns: PeriodReturns;
   indicators: {
-    ma10: (number | null)[]; ma20: (number | null)[]; ma50: (number | null)[];
+    ma10: (number | null)[]; ma20: (number | null)[]; ma50: (number | null)[]; ma200: (number | null)[];
     rsi14: (number | null)[];
     macdLine: number[]; macdSignal: number[]; macdHistogram: number[];
     volatility5d: (number | null)[];
@@ -91,7 +91,7 @@ export async function getTickerData(ticker: string, _range: Range = "1y"): Promi
     bars,
     returns: computeReturns(bars),
     indicators: {
-      ma10: sma(closes, 10), ma20: sma(closes, 20), ma50: sma(closes, 50),
+      ma10: sma(closes, 10), ma20: sma(closes, 20), ma50: sma(closes, 50), ma200: sma(closes, 200),
       rsi14: rsi(closes, 14),
       macdLine: m.macdLine, macdSignal: m.signalLine, macdHistogram: m.histogram,
       volatility5d: rollingVolatility(closes, 5),

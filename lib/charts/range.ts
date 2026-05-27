@@ -5,6 +5,7 @@ export type ChartRange = "1m" | "3m" | "6m" | "ytd" | "1y" | "all" | { from: str
 export type SliceableIndicators = {
   ma20: (number | null)[];
   ma50: (number | null)[];
+  ma200: (number | null)[];
   rsi14: (number | null)[];
   macdLine: number[];
   macdSignal: number[];
@@ -45,7 +46,7 @@ export function sliceByRange(
   return {
     bars: bars.slice(lo, hi),
     indicators: {
-      ma20: ind.ma20.slice(lo, hi), ma50: ind.ma50.slice(lo, hi), rsi14: ind.rsi14.slice(lo, hi),
+      ma20: ind.ma20.slice(lo, hi), ma50: ind.ma50.slice(lo, hi), ma200: ind.ma200.slice(lo, hi), rsi14: ind.rsi14.slice(lo, hi),
       macdLine: ind.macdLine.slice(lo, hi), macdSignal: ind.macdSignal.slice(lo, hi), macdHistogram: ind.macdHistogram.slice(lo, hi),
     },
   };
@@ -68,7 +69,7 @@ export function downsample(
   return {
     bars: pick(bars),
     indicators: {
-      ma20: pick(ind.ma20), ma50: pick(ind.ma50), rsi14: pick(ind.rsi14),
+      ma20: pick(ind.ma20), ma50: pick(ind.ma50), ma200: pick(ind.ma200), rsi14: pick(ind.rsi14),
       macdLine: pick(ind.macdLine), macdSignal: pick(ind.macdSignal), macdHistogram: pick(ind.macdHistogram),
     },
   };
